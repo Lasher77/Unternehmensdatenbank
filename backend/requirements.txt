@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+psycopg2-binary
+pydantic
+opensearch-py
+boto3
+celery
+redis
+python-dotenv
+pandas
+openpyxl
+pydantic-settings
