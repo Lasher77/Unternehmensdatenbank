@@ -2,6 +2,37 @@
 
 This project provides an API for managing company data in Germany.
 
+## Lokale Installation auf macOS
+
+1. Voraussetzungen installieren (einmalig):
+
+   - [Docker Desktop f\u00fcr Mac](https://www.docker.com/products/docker-desktop/)
+   - Optional: [Homebrew](https://brew.sh/) und Node.js f\u00fcr das Frontend (`brew install node`)
+
+2. Repository klonen und ins Projektverzeichnis wechseln:
+
+   ```bash
+   git clone <repository-url>
+   cd Unternehmensdatenbank
+   ```
+
+3. Backend starten:
+
+   ```bash
+   cp .env.example .env
+   docker compose up --build
+   ```
+
+4. Frontend starten (optional):
+
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+
+Die API ist anschlie\u00dfend unter <http://localhost:8080> erreichbar und die Weboberfl\u00e4che unter <http://localhost:3000>.
+
 ## Development
 
 ```bash
