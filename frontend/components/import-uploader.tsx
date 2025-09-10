@@ -16,7 +16,7 @@ export default function ImportUploader({ onFiles }: { onFiles: (files: File[]) =
         continue;
       }
       try {
-        const sample = await readFileHeadAsText(file, 1000);
+        const sample = await readFileHeadAsText(file, 64 * 1024);
         if (!isLikelyNdjson(sample)) {
           toast.error(`${file.name} scheint kein NDJSON zu sein`);
           continue;
