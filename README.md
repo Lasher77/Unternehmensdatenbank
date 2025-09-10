@@ -33,6 +33,64 @@ This project provides an API for managing company data in Germany.
 
 Die API ist anschlie\u00dfend unter <http://localhost:8080> erreichbar und die Weboberfl\u00e4che unter <http://localhost:3000>.
 
+
+## Lokale Installation ohne Docker
+
+1. Voraussetzungen installieren:
+
+   - Python 3.11+
+   - PostgreSQL, Redis, OpenSearch und MinIO müssen lokal laufen
+   - Optional: Node.js für das Frontend
+
+2. Repository klonen und ins Projektverzeichnis wechseln:
+
+   ```bash
+   git clone <repository-url>
+   cd Unternehmensdatenbank
+   ```
+
+3. Python-Abhängigkeiten installieren:
+
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install -r backend/requirements.txt
+   ```
+
+4. Konfiguration anpassen:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   In `.env` die Hostnamen auf `localhost` ändern, z. B.:
+
+   ```
+   POSTGRES_HOST=localhost
+   REDIS_HOST=localhost
+   OPENSEARCH_HOST=localhost
+   S3_ENDPOINT_URL=http://localhost:9000
+   ```
+
+   Starte PostgreSQL, Redis, OpenSearch und MinIO auf den entsprechenden Ports und führe die SQL-Skripte in `backend/migrations` in deiner Datenbank aus.
+
+5. Backend starten:
+
+   ```bash
+   uvicorn backend.app.main:app --reload
+   ```
+
+6. Frontend starten (optional):
+
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+
+Die API ist anschließend unter <http://localhost:8080> erreichbar und die Weboberfläche unter <http://localhost:3000>.
+
+
 ## Development
 
 ```bash
