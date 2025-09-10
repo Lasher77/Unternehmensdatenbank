@@ -20,7 +20,9 @@ export async function readFileHeadAsText(file: File, bytes = 1024) {
 }
 
 export function isLikelyNdjson(sample: string, lines = 3) {
-  const arr = sample.split("\n").slice(0, lines);
+  let arr = sample.split("\n");
+  if (!sample.endsWith("\n")) arr.pop();
+  arr = arr.slice(0, lines);
   return arr.every((line) => {
     if (!line.trim()) return true;
     try {
