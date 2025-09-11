@@ -4,11 +4,11 @@ import { env } from "./env";
 import { SearchRequest, SearchResponse, ImportResponse } from "./schemas";
 import { sleep } from "./utils";
 
-export function useSearchCompanies(params: SearchRequest) {
+export function useSearchCompanies(request: SearchRequest) {
   return useQuery<SearchResponse>({
-    queryKey: ["search", params],
+    queryKey: ["search", request],
     queryFn: async () => {
-      const { data } = await api.post<SearchResponse>("/api/search/companies", params);
+      const { data } = await api.post<SearchResponse>("/api/search/companies", request);
       return data;
     },
     keepPreviousData: true
