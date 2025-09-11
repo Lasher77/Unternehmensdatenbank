@@ -11,3 +11,4 @@ python-dotenv
 pandas
 openpyxl
 pydantic-settings
+python-multipart
