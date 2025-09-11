@@ -107,6 +107,12 @@ docker compose up --build
 Swagger UI: <http://localhost:8080/docs>
 MinIO Console: <http://localhost:9001>
 
+### OpenSearch über HTTPS
+
+Setze in deiner `.env` die Variable `OPENSEARCH_USE_SSL=true`, wenn dein OpenSearch-Cluster über HTTPS erreichbar ist.
+Die Anwendung prüft Zertifikate dabei nicht (`verify_certs=False`), sodass selbstsignierte Zertifikate akzeptiert werden.
+Für produktive Umgebungen sollte ein vertrauenswürdiges Zertifikat genutzt und die Prüfung aktiviert werden.
+
 ### Example Requests
 
 Import:
