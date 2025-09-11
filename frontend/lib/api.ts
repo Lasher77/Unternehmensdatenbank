@@ -2,8 +2,10 @@ import axios from "axios";
 import { env } from "./env";
 import { toast } from "@/components/toast";
 
+const baseURL = env.apiBaseUrl || "http://localhost:8000";
+
 export const api = axios.create({
-  baseURL: env.apiBaseUrl
+  baseURL,
 });
 
 api.interceptors.response.use(
