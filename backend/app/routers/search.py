@@ -10,8 +10,8 @@ router = APIRouter(prefix="/api/search", tags=["search"])
 
 @router.post("/companies", response_model=CompanySearchResponse)
 def search_companies(
-    payload: CompanySearchRequest,
+    request: CompanySearchRequest,
     client: OpenSearch = Depends(get_os_client),
 ) -> CompanySearchResponse:
-    result = search_service.search_companies(client, payload.model_dump())
+    result = search_service.search_companies(client, request.model_dump())
     return CompanySearchResponse(**result)

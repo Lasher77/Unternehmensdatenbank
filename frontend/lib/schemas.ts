@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const SearchRequestSchema = z.object({
+  // Free text search query
   query: z.string().optional(),
   page: z.number().int().min(1).default(1),
   per_page: z.number().int().min(1).max(100).default(20),
@@ -18,6 +19,7 @@ export const CompanySchema = z.object({
 });
 
 export const SearchResponseSchema = z.object({
+  // Matching companies for the search request
   results: z.array(CompanySchema),
   total: z.number(),
   facets: z.record(z.string(), z.array(z.object({

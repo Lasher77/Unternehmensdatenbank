@@ -1,10 +1,10 @@
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class CompanySearchRequest(BaseModel):
-    q: Optional[str] = None
+    query: Optional[str] = None
     state: Optional[str] = None
     city: Optional[str] = None
     postal_code: Optional[str] = None
@@ -26,5 +26,5 @@ class CompanyItem(BaseModel):
 
 class CompanySearchResponse(BaseModel):
     total: int
-    items: List[CompanyItem]
-    facets: Dict[str, Dict[str, int]] = {}
+    results: List[CompanyItem]
+    facets: Dict[str, Dict[str, int]] = Field(default_factory=dict)
