@@ -25,11 +25,14 @@ This project provides an API for managing company data in Germany.
 
 4. Frontend starten (optional):
 
-   ```bash
-   cd frontend
-   npm install
-   npm run dev
-   ```
+   Das Frontend ben\u00f6tigt die Umgebungsvariable `NEXT_PUBLIC_API_BASE_URL`, die auf die Basis-URL des Backends zeigt.
+
+    ```bash
+    cd frontend
+    npm install
+    echo "NEXT_PUBLIC_API_BASE_URL=http://localhost:8080" > .env.local
+    npm run dev
+    ```
 
 Die API ist anschlie\u00dfend unter <http://localhost:8080> erreichbar und die Weboberfl\u00e4che unter <http://localhost:3000>.
 
@@ -82,11 +85,14 @@ Die API ist anschlie\u00dfend unter <http://localhost:8080> erreichbar und die W
 
 6. Frontend starten (optional):
 
-   ```bash
-   cd frontend
-   npm install
-   npm run dev
-   ```
+   Das Frontend ben\u00f6tigt die Umgebungsvariable `NEXT_PUBLIC_API_BASE_URL`, die auf die Basis-URL des Backends zeigt.
+
+    ```bash
+    cd frontend
+    npm install
+    echo "NEXT_PUBLIC_API_BASE_URL=http://localhost:8080" > .env.local
+    npm run dev
+    ```
 
 Die API ist anschließend unter <http://localhost:8080> erreichbar und die Weboberfläche unter <http://localhost:3000>.
 
