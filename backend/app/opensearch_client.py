@@ -8,7 +8,13 @@ settings = get_settings()
 
 def get_opensearch() -> OpenSearch:
     return OpenSearch(
-        hosts=[{"host": settings.opensearch_host, "port": settings.opensearch_port}],
+        hosts=[
+            {
+                "host": settings.opensearch_host,
+                "port": settings.opensearch_port,
+                "scheme": "https" if settings.opensearch_use_ssl else "http",
+            }
+        ],
         http_compress=True,
         use_ssl=settings.opensearch_use_ssl,
         verify_certs=False,
