@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     s3_secret_key: str = "minio123"
     s3_bucket: str = "companies"
 
+    # Origins allowed for CORS
+    allowed_origins: list[str] = ["http://localhost:3000"]
+
     class Config:
         env_file = ".env"
 

@@ -1,12 +1,24 @@
 from fastapi import Depends, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from opensearchpy import OpenSearch
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
+from .config import get_settings
 from .deps import get_db_conn, get_os_client
 from .routers import companies, exports, imports, salesforce, search
 
 app = FastAPI(title="BVMW Companies API")
+
+settings = get_settings()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(search.router)
 app.include_router(companies.router)
