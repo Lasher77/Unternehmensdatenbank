@@ -6,7 +6,7 @@ from ..schemas.import_ import ImportResponse
 router = APIRouter(prefix="/api/imports", tags=["imports"])
 
 
-@router.post("/", response_model=ImportResponse)
+@router.post("", response_model=ImportResponse)
 async def create_import(
     label: str = Form(...), file: UploadFile | None = None
 ) -> ImportResponse:
