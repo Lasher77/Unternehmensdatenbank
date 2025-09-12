@@ -11,10 +11,10 @@ class DummyIndices:
     def __init__(self) -> None:
         self._exists = False
 
-    def exists(self, name: str) -> bool:  # pragma: no cover - simple stub
+    def exists(self, index: str) -> bool:  # pragma: no cover - simple stub
         return self._exists
 
-    def create(self, name: str, body: dict) -> None:  # pragma: no cover - simple stub
+    def create(self, index: str, body: dict) -> None:  # pragma: no cover - simple stub
         self._exists = True
 
 
@@ -28,4 +28,4 @@ def test_startup_creates_companies_index(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(main, "get_opensearch", lambda: dummy)
     with TestClient(app):
         pass
-    assert dummy.indices.exists("companies")
+    assert dummy.indices.exists(index="companies")

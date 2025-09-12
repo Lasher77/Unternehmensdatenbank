@@ -23,9 +23,9 @@ def get_opensearch() -> OpenSearch:
 
 def ensure_companies_index(client: OpenSearch) -> None:
     """Ensure that the ``companies`` index exists with the proper mappings."""
-    if not client.indices.exists("companies"):
+    if not client.indices.exists(index="companies"):
         client.indices.create(
-            "companies",
+            index="companies",
             body={
                 "mappings": {
                     "properties": {
