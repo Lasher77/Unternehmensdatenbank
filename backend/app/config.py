@@ -13,8 +13,6 @@ class Settings(BaseSettings):
 
     opensearch_host: str = "opensearch"
     opensearch_port: int = 9200
-    opensearch_user: str = "admin"
-    opensearch_password: str = "admin"
     opensearch_use_ssl: bool = False
 
     s3_endpoint_url: str = "http://minio:9000"

@@ -18,5 +18,4 @@ def get_opensearch() -> OpenSearch:
         http_compress=True,
         use_ssl=settings.opensearch_use_ssl,
         verify_certs=False,
-        basic_auth=(settings.opensearch_user, settings.opensearch_password),
     )
