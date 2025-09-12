@@ -52,3 +52,12 @@ def test_search_companies_index_missing() -> None:
     assert response.status_code == 404
     assert response.json() == {"detail": "index not found"}
     app.dependency_overrides.clear()
+
+
+def test_search_companies_no_internal_server_error() -> None:
+    """Ensure missing index does not cause a 500 error."""
+    app.dependency_overrides[get_os_client] = lambda: DummyMissingIndexClient()
+    client = TestClient(app)
+    response = client.post("/api/search/companies", json={"query": "foo"})
+    assert response.status_code != 500
+    app.dependency_overrides.clear()
