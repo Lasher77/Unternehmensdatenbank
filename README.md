@@ -23,7 +23,17 @@ This project provides an API for managing company data in Germany.
    docker compose up --build
    ```
 
-4. Frontend starten (optional):
+   Die Datenbank nutzt ein PostgreSQL-Image mit PostGIS-Erweiterung.
+
+4. SQL-Migrationen ausführen:
+
+   ```bash
+   for f in backend/migrations/*.sql; do
+     docker compose exec -T db psql -U postgres -d companies -f "$f"
+   done
+   ```
+
+5. Frontend starten (optional):
 
    Das Frontend ben\u00f6tigt die Umgebungsvariable `NEXT_PUBLIC_API_BASE_URL`, die auf die Basis-URL des Backends zeigt.
 
@@ -102,6 +112,9 @@ Die API ist anschließend unter <http://localhost:8080> erreichbar und die Webob
 ```bash
 cp .env.example .env
 docker compose up --build
+for f in backend/migrations/*.sql; do
+  docker compose exec -T db psql -U postgres -d companies -f "$f"
+done
 ```
 
 Swagger UI: <http://localhost:8080/docs>
