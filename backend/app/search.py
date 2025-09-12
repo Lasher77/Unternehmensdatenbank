@@ -76,8 +76,11 @@ def search_companies(client: OpenSearch, query: Dict[str, Any]) -> Dict[str, Any
         for h in hits.get("hits", [])
     ]
 
-    facets: Dict[str, Dict[str, int]] = {}
+    facets: Dict[str, List[Dict[str, Any]]] = {}
     for facet, agg in response.get("aggregations", {}).items():
-        facets[facet] = {bucket["key"]: bucket["doc_count"] for bucket in agg.get("buckets", [])}
+        facets[facet] = [
+            {"value": bucket["key"], "count": bucket["doc_count"]}
+            for bucket in agg.get("buckets", [])
+        ]
 
     return {"total": total, "results": results, "facets": facets}
