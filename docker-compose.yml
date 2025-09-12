@@ -27,8 +27,13 @@ services:
     environment:
       - discovery.type=single-node
       - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+      - plugins.security.ssl.http.enabled=true
+      - plugins.security.ssl.http.pemcert_filepath=config/certs/opensearch.crt
+      - plugins.security.ssl.http.pemkey_filepath=config/certs/opensearch.key
     ports:
       - "9200:9200"
+    volumes:
+      - ./opensearch/certs:/usr/share/opensearch/config/certs
     ulimits:
       memlock:
         soft: -1
