@@ -1,6 +1,7 @@
 from typing import Any, Dict, List
 
 from opensearchpy import OpenSearch
+from opensearchpy.exceptions import NotFoundError
 
 
 INDEX = "companies"
@@ -60,7 +61,10 @@ def search_companies(client: OpenSearch, query: Dict[str, Any]) -> Dict[str, Any
     """Search companies in OpenSearch and return a structured result."""
 
     body = _build_query(query)
-    response = client.search(index=INDEX, body=body)
+    try:
+        response = client.search(index=INDEX, body=body)
+    except NotFoundError:
+        raise
 
     hits = response.get("hits", {})
     total = hits.get("total", {}).get("value", 0)

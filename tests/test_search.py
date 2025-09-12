@@ -2,6 +2,7 @@ import pytest
 
 pytest.importorskip("httpx")
 from fastapi.testclient import TestClient
+from opensearchpy.exceptions import NotFoundError
 
 from backend.app.deps import get_os_client
 from backend.app.main import app
@@ -24,6 +25,11 @@ class DummyOSClient:
         }
 
 
+class DummyMissingIndexClient:
+    def search(self, index: str, body: dict) -> dict:  # pragma: no cover - simple stub
+        raise NotFoundError(404, {}, "index not found")
+
+
 def test_search_companies() -> None:
     app.dependency_overrides[get_os_client] = lambda: DummyOSClient()
     client = TestClient(app)
@@ -36,4 +42,13 @@ def test_search_companies() -> None:
         {"source_id": "2", "name": "Bar"},
     ]
     assert data["facets"]["status"]["active"] == 2
+    app.dependency_overrides.clear()
+
+
+def test_search_companies_index_missing() -> None:
+    app.dependency_overrides[get_os_client] = lambda: DummyMissingIndexClient()
+    client = TestClient(app)
+    response = client.post("/api/search/companies", json={"query": "foo"})
+    assert response.status_code == 404
+    assert response.json() == {"detail": "index not found"}
     app.dependency_overrides.clear()
