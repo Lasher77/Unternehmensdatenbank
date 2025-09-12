@@ -41,7 +41,7 @@ def test_search_companies() -> None:
         {"source_id": "1", "name": "Foo"},
         {"source_id": "2", "name": "Bar"},
     ]
-    assert data["facets"]["status"]["active"] == 2
+    assert data["facets"]["status"][0] == {"value": "active", "count": 2}
     app.dependency_overrides.clear()
 
 

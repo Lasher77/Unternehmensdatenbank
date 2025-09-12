@@ -24,7 +24,12 @@ class CompanyItem(BaseModel):
     name: Optional[str] = None
 
 
+class FacetBucket(BaseModel):
+    value: str
+    count: int
+
+
 class CompanySearchResponse(BaseModel):
     total: int
     results: List[CompanyItem]
-    facets: Dict[str, Dict[str, int]] = Field(default_factory=dict)
+    facets: Dict[str, List[FacetBucket]] = Field(default_factory=dict)
