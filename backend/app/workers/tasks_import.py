@@ -6,6 +6,11 @@ from .celery_app import celery_app
 from ..db import engine
 from ..schemas.company import Company, Event
 from ..utils.staging_loader import load_to_staging, promote_staging
+from ..opensearch_client import (
+    ensure_companies_index,
+    get_opensearch,
+    index_companies,
+)
 
 
 @celery_app.task
@@ -73,4 +78,34 @@ def finalize_import(run_id: int) -> int:
     """Promote staging data for ``run_id`` into the main tables."""
 
     promote_staging(run_id)
+
+    with engine.begin() as conn:
+        companies = (
+            conn.execute(
+                text(
+                    """
+                SELECT
+                    source_id,
+                    name_norm AS name,
+                    state,
+                    city,
+                    postal_code,
+                    status,
+                    legal_form,
+                    lat,
+                    lng
+                FROM companies
+                WHERE seen_in_run = :run_id
+                """
+                ),
+                {"run_id": run_id},
+            )
+            .mappings()
+            .all()
+        )
+
+    client = get_opensearch()
+    ensure_companies_index(client)
+    index_companies(client, companies)
+
     return run_id
