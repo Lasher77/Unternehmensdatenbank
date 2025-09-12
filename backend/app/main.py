@@ -6,6 +6,7 @@ from sqlalchemy.engine import Connection
 
 from .config import get_settings
 from .deps import get_db_conn, get_os_client
+from .opensearch_client import ensure_companies_index, get_opensearch
 from .routers import companies, exports, imports, salesforce, search, tasks
 
 app = FastAPI(title="BVMW Companies API")
@@ -26,6 +27,12 @@ app.include_router(imports.router)
 app.include_router(exports.router)
 app.include_router(salesforce.router)
 app.include_router(tasks.router)
+
+
+@app.on_event("startup")
+def startup_event() -> None:
+    client = get_opensearch()
+    ensure_companies_index(client)
 
 
 @app.get("/healthz")
