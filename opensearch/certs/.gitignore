@@ -1,2 +1,6 @@
 *
 !.gitignore
+!opensearch.crt
+!opensearch.key
+!README.md
+!generate_certs.sh
