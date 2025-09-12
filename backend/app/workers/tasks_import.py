@@ -1,8 +1,11 @@
 import json
 
+from sqlalchemy import text
+
 from .celery_app import celery_app
+from ..db import engine
 from ..schemas.company import Company, Event
-from ..utils.staging_loader import load_to_staging
+from ..utils.staging_loader import load_to_staging, promote_staging
 
 
 @celery_app.task
@@ -53,5 +56,21 @@ def run_import(s3_key: str) -> str:
 
             rows.append({"company": company.model_dump(), "events": events})
 
-    load_to_staging(rows)
+    # Register a new ingestion run and persist data
+    with engine.begin() as conn:
+        run_id = conn.execute(
+            text("INSERT INTO ingestion_run (source) VALUES (:src) RETURNING run_id"),
+            {"src": "file"},
+        ).scalar_one()
+
+    load_to_staging(rows, run_id)
+    finalize_import.delay(run_id)
     return s3_key
+
+
+@celery_app.task
+def finalize_import(run_id: int) -> int:
+    """Promote staging data for ``run_id`` into the main tables."""
+
+    promote_staging(run_id)
+    return run_id

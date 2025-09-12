@@ -142,6 +142,11 @@ Then run the import:
 curl -F "label=Q3_2025" -F "file=@/path/to/file.jsonl" http://localhost:8080/api/imports
 ```
 
+The initial task parses the NDJSON file and loads the data into staging tables.
+Afterwards a follow-up Celery task promotes the staged rows into the `companies`
+and `events` tables, using `source_id` to upsert existing entries and linking
+records to the corresponding `ingestion_run`.
+
 Search:
 ```bash
 curl -X POST http://localhost:8080/api/search/companies -H "Content-Type: application/json" \
