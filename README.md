@@ -128,7 +128,16 @@ Für produktive Umgebungen sollte ein vertrauenswürdiges Zertifikat genutzt und
 
 ### Example Requests
 
-Import:
+Import (requires running worker service):
+
+Start the Celery worker before triggering an import:
+
+```bash
+docker compose up worker
+```
+
+Then run the import:
+
 ```bash
 curl -F "label=Q3_2025" -F "file=@/path/to/file.jsonl" http://localhost:8080/api/imports
 ```
