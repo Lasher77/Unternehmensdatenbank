@@ -28,8 +28,8 @@ services:
       - discovery.type=single-node
       - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
       - plugins.security.ssl.http.enabled=true
-      - plugins.security.ssl.http.pemcert_filepath=config/certs/opensearch.crt
-      - plugins.security.ssl.http.pemkey_filepath=config/certs/opensearch.key
+      - plugins.security.ssl.http.pemcert_filepath=certs/opensearch.crt
+      - plugins.security.ssl.http.pemkey_filepath=certs/opensearch.key
     ports:
       - "9200:9200"
     volumes:
