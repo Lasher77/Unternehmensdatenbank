@@ -9,6 +9,11 @@ celery_app = Celery(
     broker=f"redis://{settings.redis_host}:{settings.redis_port}/0",
     backend=f"redis://{settings.redis_host}:{settings.redis_port}/0",
 )
+celery_app.conf.imports = (
+    "app.workers.tasks_import",
+    "app.workers.tasks_export",
+    "app.workers.tasks_reindex",
+)
 
 
 @celery_app.task
