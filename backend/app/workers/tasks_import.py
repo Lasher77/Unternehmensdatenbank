@@ -59,7 +59,45 @@ def run_import(s3_key: str) -> str:
                 for item in data.get("events", {}).get("items", [])
             ]
 
-            rows.append({"company": company.model_dump(), "events": events})
+            persons: list[dict] = []
+            roles: list[dict] = []
+            for rp in data.get("relatedPersons", {}).get("items", []):
+                p = rp.get("person", {})
+                source_person_id = p.get("id")
+                if not source_person_id:
+                    continue
+                persons.append({"source_person_id": source_person_id, "data": p})
+                for role in rp.get("roles", []):
+                    roles.append(
+                        {
+                            "source_id": data["id"],
+                            "source_person_id": source_person_id,
+                            "role_name": role.get("name"),
+                            "role_type": role.get("type"),
+                            "role_date": role.get("date"),
+                        }
+                    )
+
+            industries: list[dict] = []
+            for scheme, codes in data.get("segmentCodes", {}).items():
+                for code in codes:
+                    industries.append(
+                        {
+                            "source_id": data["id"],
+                            "scheme": scheme,
+                            "code": code,
+                        }
+                    )
+
+            rows.append(
+                {
+                    "company": company.model_dump(),
+                    "events": events,
+                    "persons": persons,
+                    "roles": roles,
+                    "industries": industries,
+                }
+            )
 
     # Register a new ingestion run and persist data
     with engine.begin() as conn:
