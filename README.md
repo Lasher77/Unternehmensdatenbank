@@ -2,6 +2,26 @@
 
 This project provides an API for managing company data in Germany.
 
+## Schnellstart
+
+F\u00fcr eine lokale Entwicklungsumgebung mit Docker steht ein Hilfsskript bereit:
+
+```bash
+./scripts/dev-start.sh
+```
+
+Das Skript kopiert bei Bedarf die Beispieldatei `.env.example`, startet alle Docker-Services
+und f\u00fchrt s\u00e4mtliche SQL-Migrationen aus. Anschlie\u00dfend ist das Backend unter
+<http://localhost:8080> erreichbar. Das Frontend kann danach mit
+
+```bash
+cd frontend
+npm install
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8080 npm run dev
+```
+
+gestartet werden.
+
 ## Lokale Installation auf macOS
 
 1. Voraussetzungen installieren (einmalig):
