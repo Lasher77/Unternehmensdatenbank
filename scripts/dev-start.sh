@@ -16,7 +16,7 @@ docker compose up -d --build
 
 # Run migrations
 for f in backend/migrations/*.sql; do
-  docker compose exec -T db psql -U postgres -d companies -f "$f"
+  docker compose exec -T db psql -U postgres -d companies < "$f"
 done
 
 echo "Backend running at http://localhost:8080" 
