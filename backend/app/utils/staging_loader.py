@@ -11,8 +11,9 @@ from sqlalchemy import text
 def load_to_staging(rows: List[Dict], run_id: int) -> None:
     """Insert parsed rows into the ``staging_*`` tables.
 
-    Each row is expected to contain ``company`` and ``events`` keys. The
-    function uses a direct SQL approach to avoid ORM overhead.
+    Each row may contain ``company`` data along with related ``events``,
+    ``persons`` with their roles, and ``industries``. The function uses a
+    direct SQL approach to avoid ORM overhead.
     """
 
     if not rows:
@@ -35,7 +36,7 @@ def load_to_staging(rows: List[Dict], run_id: int) -> None:
                 },
             )
 
-            for event in row["events"]:
+            for event in row.get("events", []):
                 conn.execute(
                     text(
                         "INSERT INTO staging_events "
@@ -52,12 +53,62 @@ def load_to_staging(rows: List[Dict], run_id: int) -> None:
                     },
                 )
 
+            for person in row.get("persons", []):
+                conn.execute(
+                    text(
+                        "INSERT INTO staging_persons "
+                        "(source_person_id, data, run_id) "
+                        "VALUES (:source_person_id, :data, :run_id)"
+                    ),
+                    {
+                        "source_person_id": person["source_person_id"],
+                        "data": json.dumps(person["data"]),
+                        "run_id": run_id,
+                    },
+                )
+
+            for role in row.get("roles", []):
+                conn.execute(
+                    text(
+                        "INSERT INTO staging_company_person_roles "
+                        "("
+                        "source_id, source_person_id, role_name, "
+                        "role_type, role_date, run_id"
+                        ") "
+                        "VALUES (:source_id, :source_person_id, :role_name, "
+                        ":role_type, :role_date, :run_id)"
+                    ),
+                    {
+                        "source_id": role.get("source_id"),
+                        "source_person_id": role.get("source_person_id"),
+                        "role_name": role.get("role_name"),
+                        "role_type": role.get("role_type"),
+                        "role_date": role.get("role_date"),
+                        "run_id": run_id,
+                    },
+                )
+
+            for industry in row.get("industries", []):
+                conn.execute(
+                    text(
+                        "INSERT INTO staging_company_industries "
+                        "(source_id, scheme, code, run_id) "
+                        "VALUES (:source_id, :scheme, :code, :run_id)"
+                    ),
+                    {
+                        "source_id": industry.get("source_id"),
+                        "scheme": industry.get("scheme"),
+                        "code": industry.get("code"),
+                        "run_id": run_id,
+                    },
+                )
+
 
 def promote_staging(run_id: int) -> None:
-    """Move data from staging tables into the main ``companies`` and ``events`` tables.
+    """Move data from staging tables into the main tables.
 
-    The function performs an ``UPSERT`` into ``companies`` using ``source_id`` as
-    unique identifier and replaces existing events for the affected companies.
+    The function performs ``UPSERT`` operations for companies and persons and
+    replaces existing events, roles and industries for the affected companies.
     ``ingestion_run`` references are preserved via the ``run_id`` column.
     """
 
@@ -121,6 +172,46 @@ def promote_staging(run_id: int) -> None:
             {"run_id": run_id},
         )
 
+        # Upsert persons
+        conn.execute(
+            text(
+                """
+                INSERT INTO persons (
+                    source_person_id, first_name, last_name, birth_date,
+                    street, postal_code, city, state, country, lat, lng, data
+                )
+                SELECT
+                    source_person_id,
+                    data->'name'->>'firstName',
+                    data->'name'->>'lastName',
+                    (data->>'birthDate')::date,
+                    data->'address'->>'street',
+                    data->'address'->>'postalCode',
+                    data->'address'->>'city',
+                    data->'address'->>'state',
+                    COALESCE(data->'address'->>'country', 'DE'),
+                    (data->'address'->>'lat')::double precision,
+                    (data->'address'->>'lng')::double precision,
+                    data
+                FROM staging_persons
+                WHERE run_id = :run_id
+                ON CONFLICT (source_person_id) DO UPDATE SET
+                    first_name = EXCLUDED.first_name,
+                    last_name = EXCLUDED.last_name,
+                    birth_date = EXCLUDED.birth_date,
+                    street = EXCLUDED.street,
+                    postal_code = EXCLUDED.postal_code,
+                    city = EXCLUDED.city,
+                    state = EXCLUDED.state,
+                    country = EXCLUDED.country,
+                    lat = EXCLUDED.lat,
+                    lng = EXCLUDED.lng,
+                    data = EXCLUDED.data
+                """
+            ),
+            {"run_id": run_id},
+        )
+
         # Replace events for affected companies
         conn.execute(
             text(
@@ -141,6 +232,67 @@ def promote_staging(run_id: int) -> None:
                 )
                 SELECT source_id, event_date, event_type, description, run_id
                 FROM staging_events
+                WHERE run_id = :run_id
+                """
+            ),
+            {"run_id": run_id},
+        )
+
+        # Replace roles for affected companies
+        conn.execute(
+            text(
+                """
+                DELETE FROM company_person_roles WHERE source_id IN (
+                    SELECT source_id
+                    FROM staging_company_person_roles
+                    WHERE run_id = :run_id
+                )
+                """
+            ),
+            {"run_id": run_id},
+        )
+
+        conn.execute(
+            text(
+                """
+                INSERT INTO company_person_roles (
+                    source_id, person_id, role_name, role_type, role_date, run_id
+                )
+                SELECT
+                    scpr.source_id,
+                    p.person_id,
+                    scpr.role_name,
+                    scpr.role_type,
+                    scpr.role_date,
+                    scpr.run_id
+                FROM staging_company_person_roles scpr
+                JOIN persons p ON p.source_person_id = scpr.source_person_id
+                WHERE scpr.run_id = :run_id
+                """
+            ),
+            {"run_id": run_id},
+        )
+
+        # Replace industries for affected companies
+        conn.execute(
+            text(
+                """
+                DELETE FROM company_industries WHERE source_id IN (
+                    SELECT source_id
+                    FROM staging_company_industries
+                    WHERE run_id = :run_id
+                )
+                """
+            ),
+            {"run_id": run_id},
+        )
+
+        conn.execute(
+            text(
+                """
+                INSERT INTO company_industries (source_id, scheme, code, run_id)
+                SELECT source_id, scheme, code, run_id
+                FROM staging_company_industries
                 WHERE run_id = :run_id
                 """
             ),
