@@ -12,9 +12,11 @@ from ..opensearch_client import (
     index_companies,
 )
 
+BATCH_SIZE = 1000
 
-@celery_app.task
-def run_import(s3_key: str) -> str:
+
+@celery_app.task(bind=True)
+def run_import(self, s3_key: str) -> str:
     """Import companies from an NDJSON file.
 
     The ``s3_key`` parameter is treated as a local file path. Each line is
@@ -22,8 +24,31 @@ def run_import(s3_key: str) -> str:
     written into the staging tables.
     """
 
-    rows: list[dict] = []
     with open(s3_key, "r", encoding="utf-8") as fh:
+        total_entries = sum(1 for line in fh if line.strip())
+        fh.seek(0)
+
+        rows: list[dict] = []
+        processed = 0
+
+        with engine.begin() as conn:
+            run_id = conn.execute(
+                text("INSERT INTO ingestion_run (source) VALUES (:src) RETURNING run_id"),
+                {"src": "file"},
+            ).scalar_one()
+
+        def report_progress() -> None:
+            if total_entries:
+                percent = int(processed * 100 / total_entries)
+                self.update_state(
+                    state="PROGRESS",
+                    meta={
+                        "current": processed,
+                        "total": total_entries,
+                        "percent": percent,
+                    },
+                )
+
         for line in fh:
             line = line.strip()
             if not line:
@@ -98,15 +123,18 @@ def run_import(s3_key: str) -> str:
                     "industries": industries,
                 }
             )
+            processed += 1
 
-    # Register a new ingestion run and persist data
-    with engine.begin() as conn:
-        run_id = conn.execute(
-            text("INSERT INTO ingestion_run (source) VALUES (:src) RETURNING run_id"),
-            {"src": "file"},
-        ).scalar_one()
+            if len(rows) >= BATCH_SIZE:
+                load_to_staging(rows, run_id)
+                rows = []
+                report_progress()
 
-    load_to_staging(rows, run_id)
+        if rows:
+            load_to_staging(rows, run_id)
+            rows = []
+            report_progress()
+
     finalize_import.delay(run_id)
     return s3_key
 
