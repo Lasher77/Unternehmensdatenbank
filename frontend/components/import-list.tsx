@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useCreateImport } from '@/lib/queries';
 import { env } from '@/lib/env';
 import { api } from '@/lib/api';
@@ -29,12 +29,45 @@ export default function ImportList({ label, items, setItems }: Props) {
   const createImport = useCreateImport();
   const uploadingRef = useRef(false);
 
+  const pollTask = useCallback(
+    async (localId: string, taskId: string) => {
+      if (process.env.NODE_ENV !== 'production' && env.fakeTaskPoll) {
+        await sleep(2000);
+        setItems((arr) => arr.map((i) => (i.id === localId ? { ...i, status: 'done' } : i)));
+        return;
+      }
+      for (let i = 0; i < 60; i++) {
+        try {
+          const { data } = await api.get(`/api/tasks/${taskId}`);
+          if (data.state === 'SUCCESS') {
+            setItems((arr) => arr.map((i) => (i.id === localId ? { ...i, status: 'done' } : i)));
+            return;
+          }
+          if (data.state === 'FAILURE') {
+            setItems((arr) =>
+              arr.map((i) => (i.id === localId ? { ...i, status: 'error', error: 'Task failed' } : i))
+            );
+            return;
+          }
+        } catch (e: any) {
+          toast.error(e.message);
+        }
+        await sleep(2000);
+      }
+    },
+    [setItems]
+  );
+
   useEffect(() => {
+    if (uploadingRef.current) return;
+    if (!label) return;
+
+    const next = items.find((i) => i.status === 'ready');
+    if (!next) return;
+
+    uploadingRef.current = true;
+
     async function process() {
-      if (uploadingRef.current) return;
-      const next = items.find((i) => i.status === 'ready');
-      if (!next || !label) return;
-      uploadingRef.current = true;
       try {
         setItems((arr) => arr.map((i) => (i.id === next.id ? { ...i, status: 'uploading', progress: 0 } : i)));
         const res = await createImport.mutateAsync({
@@ -45,42 +78,20 @@ export default function ImportList({ label, items, setItems }: Props) {
             setItems((arr) => arr.map((i) => (i.id === next.id ? { ...i, progress: prog } : i)));
           }
         });
-        setItems((arr) => arr.map((i) => (i.id === next.id ? { ...i, status: 'processing', taskId: res.task_id, progress: 100 } : i)));
+        setItems((arr) =>
+          arr.map((i) => (i.id === next.id ? { ...i, status: 'processing', taskId: res.task_id, progress: 100 } : i))
+        );
         await pollTask(next.id, res.task_id);
       } catch (e: any) {
         toast.error(e.message);
         setItems((arr) => arr.map((i) => (i.id === next.id ? { ...i, status: 'error', error: e.message } : i)));
       } finally {
         uploadingRef.current = false;
-        process();
       }
     }
-    process();
-  }, [items, label, createImport, setItems]);
 
-  async function pollTask(localId: string, taskId: string) {
-    if (process.env.NODE_ENV !== 'production' && env.fakeTaskPoll) {
-      await sleep(2000);
-      setItems((arr) => arr.map((i) => (i.id === localId ? { ...i, status: 'done' } : i)));
-      return;
-    }
-    for (let i = 0; i < 60; i++) {
-      try {
-        const { data } = await api.get(`/api/tasks/${taskId}`);
-        if (data.state === 'SUCCESS') {
-          setItems((arr) => arr.map((i) => (i.id === localId ? { ...i, status: 'done' } : i)));
-          return;
-        }
-        if (data.state === 'FAILURE') {
-          setItems((arr) => arr.map((i) => (i.id === localId ? { ...i, status: 'error', error: 'Task failed' } : i)));
-          return;
-        }
-      } catch (e: any) {
-        toast.error(e.message);
-      }
-      await sleep(2000);
-    }
-  }
+    process();
+  }, [items, label, createImport, pollTask, setItems]);
 
   function retry(id: string) {
     setItems((arr) => arr.map((i) => (i.id === id ? { ...i, status: 'ready', progress: 0, error: undefined } : i)));
