@@ -1,7 +1,12 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { api } from "./api";
 import { env } from "./env";
-import { SearchRequest, SearchResponse, ImportResponse } from "./schemas";
+import {
+  SearchRequest,
+  SearchResponse,
+  ImportResponse,
+  CompanyDetailResponse
+} from "./schemas";
 import { sleep } from "./utils";
 
 export function useSearchCompanies(request: SearchRequest) {
@@ -16,11 +21,11 @@ export function useSearchCompanies(request: SearchRequest) {
 }
 
 export function useCompanyDetail(id: string) {
-  return useQuery({
+  return useQuery<CompanyDetailResponse>({
     queryKey: ["company", id],
     enabled: !!id,
     queryFn: async () => {
-      const { data } = await api.get(`/api/companies/${id}`);
+      const { data } = await api.get<CompanyDetailResponse>(`/api/companies/${id}`);
       return data;
     }
   });

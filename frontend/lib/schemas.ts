@@ -44,3 +44,56 @@ export const ImportResponseSchema = z.object({
   task_id: z.string()
 });
 export type ImportResponse = z.infer<typeof ImportResponseSchema>;
+
+export const EventSchema = z.object({
+  event_id: z.number().optional(),
+  event_date: z.string().optional(),
+  event_type: z.string().optional(),
+  description: z.string().optional()
+});
+export type Event = z.infer<typeof EventSchema>;
+
+export const PersonRoleSchema = z.object({
+  role_name: z.string().optional(),
+  role_type: z.string().optional(),
+  role_date: z.string().optional()
+});
+
+export const PersonSchema = z.object({
+  source_person_id: z.string(),
+  first_name: z.string().optional(),
+  last_name: z.string().optional(),
+  birth_date: z.string().optional(),
+  roles: z.array(PersonRoleSchema)
+});
+export type Person = z.infer<typeof PersonSchema>;
+
+export const IndustryCodeSchema = z.object({
+  scheme: z.string(),
+  code: z.string()
+});
+
+export const CompanyDetailCompanySchema = CompanySchema.extend({
+  raw_name: z.string().optional(),
+  legal_form: z.string().optional(),
+  street: z.string().optional(),
+  postal_code: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  country: z.string().optional(),
+  register_id: z.string().optional(),
+  register_city: z.string().optional(),
+  register_country: z.string().optional(),
+  register_unique_key: z.string().optional(),
+  status: z.string().optional(),
+  terminated: z.boolean().optional()
+});
+export type CompanyDetailCompany = z.infer<typeof CompanyDetailCompanySchema>;
+
+export const CompanyDetailResponseSchema = z.object({
+  company: CompanyDetailCompanySchema,
+  events: z.array(EventSchema),
+  persons: z.array(PersonSchema),
+  industry_codes: z.array(IndustryCodeSchema)
+});
+export type CompanyDetailResponse = z.infer<typeof CompanyDetailResponseSchema>;
