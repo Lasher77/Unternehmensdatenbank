@@ -8,20 +8,26 @@ export default function CompanyPage({ params }: { params: { source_id: string } 
   if (isLoading) return <div>Loading...</div>;
   if (!data) return <div>Not found</div>;
 
+  const { company, events } = data;
+
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold">{data.name}</h1>
+      <h1 className="text-2xl font-bold">{company.name}</h1>
       <div>
         <h2 className="font-medium">Coordinates</h2>
         <div className="h-48 bg-muted flex items-center justify-center">
-          {data.lat && data.lng ? `${data.lat}, ${data.lng}` : 'No coordinates'}
+          {company.lat && company.lng ? `${company.lat}, ${company.lng}` : 'No coordinates'}
         </div>
       </div>
       <div>
         <h2 className="font-medium">Events</h2>
-        <ul className="list-disc pl-5">
-          {data.events?.map((e: any, idx: number) => (
-            <li key={idx}>{e}</li>
+        <ul className="list-disc pl-5 space-y-1">
+          {events?.map((e: any, idx: number) => (
+            <li key={e.event_id ?? idx}>
+              {e.event_date ? `${e.event_date}: ` : ''}
+              {e.event_type}
+              {e.description ? ` - ${e.description}` : ''}
+            </li>
           ))}
         </ul>
       </div>
