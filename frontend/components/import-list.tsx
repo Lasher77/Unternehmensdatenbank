@@ -59,7 +59,7 @@ export default function ImportList({ label, items, setItems }: Props) {
   }, [items, label, createImport, setItems]);
 
   async function pollTask(localId: string, taskId: string) {
-    if (env.fakeTaskPoll) {
+    if (process.env.NODE_ENV !== 'production' && env.fakeTaskPoll) {
       await sleep(2000);
       setItems((arr) => arr.map((i) => (i.id === localId ? { ...i, status: 'done' } : i)));
       return;
