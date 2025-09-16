@@ -48,9 +48,7 @@ gestartet werden.
 4. SQL-Migrationen ausführen:
 
    ```bash
-   for f in backend/migrations/*.sql; do
-     docker compose exec -T db psql -U postgres -d companies -f "$f"
-   done
+   docker compose run --rm backend python scripts/run_migrations.py
    ```
 
 5. Frontend starten (optional):
@@ -105,7 +103,8 @@ Die API ist anschlie\u00dfend unter <http://localhost:8080> erreichbar und die W
    S3_ENDPOINT_URL=http://localhost:9000
    ```
 
-   Starte PostgreSQL, Redis, OpenSearch und MinIO auf den entsprechenden Ports und führe die SQL-Skripte in `backend/migrations` in deiner Datenbank aus.
+   Starte PostgreSQL, Redis, OpenSearch und MinIO auf den entsprechenden Ports und führe die SQL-Skripte in `backend/migrations`
+   (z. B. mit `python backend/scripts/run_migrations.py`) in deiner Datenbank aus.
 
 5. Backend starten:
 
@@ -132,9 +131,7 @@ Die API ist anschließend unter <http://localhost:8080> erreichbar und die Webob
 ```bash
 cp .env.example .env
 docker compose up --build
-for f in backend/migrations/*.sql; do
-  docker compose exec -T db psql -U postgres -d companies -f "$f"
-done
+docker compose run --rm backend python scripts/run_migrations.py
 ```
 
 Swagger UI: <http://localhost:8080/docs>
@@ -155,6 +152,10 @@ Start the Celery worker before triggering an import:
 ```bash
 docker compose up worker
 ```
+
+Der Worker führt vor dem Start automatisch `scripts/run_migrations.py` aus, damit
+alle SQL-Migrationen—including die Erweiterung der `persons`-Tabelle und die
+Unique-Constraint—angewendet sind.
 
 Then run the import:
 

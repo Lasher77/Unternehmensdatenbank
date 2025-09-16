@@ -14,7 +14,8 @@ services:
   worker:
     build: ./backend
     env_file: .env
-    command: celery -A app.workers.celery_app worker -l info
+    command:
+      - ./scripts/start_worker.sh
     depends_on:
       - db
       - redis
