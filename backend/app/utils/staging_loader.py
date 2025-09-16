@@ -217,7 +217,7 @@ def promote_staging(run_id: int) -> None:
                     source_person_id,
                     data->'name'->>'firstName',
                     data->'name'->>'lastName',
-                    (data->>'birthDate')::date,
+                    NULLIF(data->>'birthDate', '')::date,
                     data->'address'->>'street',
                     data->'address'->>'postalCode',
                     data->'address'->>'city',
