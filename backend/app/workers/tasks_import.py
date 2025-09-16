@@ -89,7 +89,7 @@ def run_import(self, s3_key: str) -> str:
             ]
 
             persons: list[dict] = []
-            roles: list[dict] = []
+            person_roles: list[dict] = []
             for rp in data.get("relatedPersons", {}).get("items", []):
                 p = rp.get("person", {})
                 source_person_id = p.get("id")
@@ -99,7 +99,7 @@ def run_import(self, s3_key: str) -> str:
                 description = rp.get("description")
                 for role in rp.get("roles", []):
                     demotion = role.get("demotion")
-                    roles.append(
+                    person_roles.append(
                         {
                             "source_id": data["id"],
                             "source_person_id": source_person_id,
@@ -129,8 +129,8 @@ def run_import(self, s3_key: str) -> str:
                 if not related_source_id:
                     continue
 
-                roles = rel.get("roles") or [None]
-                for role in roles:
+                rel_roles = rel.get("roles") or [None]
+                for role in rel_roles:
                     relation_type = None
                     if role:
                         relation_type = role.get("type") or role.get("name")
@@ -149,7 +149,7 @@ def run_import(self, s3_key: str) -> str:
                     "company": company.model_dump(),
                     "events": events,
                     "persons": persons,
-                    "roles": roles,
+                    "roles": person_roles,
                     "industries": industries,
                     "relations": relations,
                 }

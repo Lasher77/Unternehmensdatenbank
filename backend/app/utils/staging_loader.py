@@ -68,6 +68,8 @@ def load_to_staging(rows: List[Dict], run_id: int) -> None:
                 )
 
             for role in row.get("roles", []):
+                if role is None:
+                    continue
                 conn.execute(
                     text(
                         "INSERT INTO staging_company_person_roles "
