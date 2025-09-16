@@ -93,7 +93,9 @@ def run_import(self, s3_key: str) -> str:
                 if not source_person_id:
                     continue
                 persons.append({"source_person_id": source_person_id, "data": p})
+                description = rp.get("description")
                 for role in rp.get("roles", []):
+                    demotion = role.get("demotion")
                     roles.append(
                         {
                             "source_id": data["id"],
@@ -101,6 +103,8 @@ def run_import(self, s3_key: str) -> str:
                             "role_name": role.get("name"),
                             "role_type": role.get("type"),
                             "role_date": role.get("date"),
+                            "description": description,
+                            "demotion": demotion,
                         }
                     )
 

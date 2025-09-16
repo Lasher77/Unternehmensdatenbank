@@ -73,10 +73,10 @@ def load_to_staging(rows: List[Dict], run_id: int) -> None:
                         "INSERT INTO staging_company_person_roles "
                         "("
                         "source_id, source_person_id, role_name, "
-                        "role_type, role_date, run_id"
+                        "role_type, role_date, description, demotion, run_id"
                         ") "
                         "VALUES (:source_id, :source_person_id, :role_name, "
-                        ":role_type, :role_date, :run_id)"
+                        ":role_type, :role_date, :description, :demotion, :run_id)"
                     ),
                     {
                         "source_id": role.get("source_id"),
@@ -84,6 +84,8 @@ def load_to_staging(rows: List[Dict], run_id: int) -> None:
                         "role_name": role.get("role_name"),
                         "role_type": role.get("role_type"),
                         "role_date": role.get("role_date"),
+                        "description": role.get("description"),
+                        "demotion": role.get("demotion"),
                         "run_id": run_id,
                     },
                 )
@@ -256,7 +258,7 @@ def promote_staging(run_id: int) -> None:
             text(
                 """
                 INSERT INTO company_person_roles (
-                    source_id, person_id, role_name, role_type, role_date, run_id
+                    source_id, person_id, role_name, role_type, role_date, description, demotion, run_id
                 )
                 SELECT
                     scpr.source_id,
@@ -264,6 +266,8 @@ def promote_staging(run_id: int) -> None:
                     scpr.role_name,
                     scpr.role_type,
                     scpr.role_date,
+                    scpr.description,
+                    scpr.demotion,
                     scpr.run_id
                 FROM staging_company_person_roles scpr
                 JOIN persons p ON p.source_person_id = scpr.source_person_id
