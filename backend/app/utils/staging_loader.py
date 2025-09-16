@@ -168,8 +168,8 @@ def promote_staging(run_id: int) -> None:
                     data->>'city',
                     data->>'state',
                     COALESCE(data->>'country', 'DE'),
-                    (data->>'lat')::double precision,
-                    (data->>'lng')::double precision,
+                    NULLIF(data->>'lat', '')::double precision,
+                    NULLIF(data->>'lng', '')::double precision,
                     data->>'register_id',
                     data->>'register_city',
                     data->>'register_country',
@@ -223,8 +223,8 @@ def promote_staging(run_id: int) -> None:
                     data->'address'->>'city',
                     data->'address'->>'state',
                     COALESCE(data->'address'->>'country', 'DE'),
-                    (data->'address'->>'lat')::double precision,
-                    (data->'address'->>'lng')::double precision,
+                    NULLIF(data->'address'->>'lat', '')::double precision,
+                    NULLIF(data->'address'->>'lng', '')::double precision,
                     data
                 FROM staging_persons
                 WHERE run_id = :run_id
