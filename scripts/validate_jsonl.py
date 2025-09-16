@@ -10,13 +10,19 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+if sys.version_info >= (3, 10):
+    dataclass_decorator = dataclass(slots=True)
+else:  # pragma: no cover - older Python support
+    dataclass_decorator = dataclass
+
+
 if __package__ is None or __package__ == "":  # pragma: no cover - runtime safety
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backend.app.workers.tasks_import import run_import
 
 
-@dataclass(slots=True)
+@dataclass_decorator
 class ValidationReport:
     """Result of validating a JSONL file."""
 
