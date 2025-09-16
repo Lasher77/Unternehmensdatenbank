@@ -6,6 +6,8 @@ if [ ! -f .env ]; then
   cp .env.example .env
 fi
 
+source .env
+
 # Start services
 if ! docker compose ps >/dev/null 2>&1; then
   echo "Docker compose not installed or not running?" >&2
@@ -13,6 +15,16 @@ if ! docker compose ps >/dev/null 2>&1; then
 fi
 
 docker compose up -d --build
+
+# Wait for Postgres
+until docker compose exec db pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null 2>&1; do
+  sleep 1
+done
+
+# Wait for OpenSearch
+until curl -sSf http://localhost:9200 >/dev/null 2>&1; do
+  sleep 1
+done
 
 # Run migrations
 for f in backend/migrations/*.sql; do
