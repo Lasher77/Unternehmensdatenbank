@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 from sqlalchemy import text
 
@@ -175,3 +176,16 @@ def finalize_import(run_id: int) -> int:
     index_companies(client, companies)
 
     return run_id
+
+
+@celery_app.task
+def cleanup_import_file(file_path: str) -> str:
+    """Delete a temporary import file once it is no longer needed."""
+
+    path = Path(file_path)
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+
+    return file_path
