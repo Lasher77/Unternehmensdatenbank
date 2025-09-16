@@ -34,7 +34,10 @@ def run_import(self, s3_key: str) -> str:
 
         with engine.begin() as conn:
             run_id = conn.execute(
-                text("INSERT INTO ingestion_run (source) VALUES (:src) RETURNING run_id"),
+                text(
+                    "INSERT INTO ingestion_run (source) VALUES (:src) "
+                    "RETURNING run_id"
+                ),
                 {"src": "file"},
             ).scalar_one()
 
@@ -119,6 +122,28 @@ def run_import(self, s3_key: str) -> str:
                         }
                     )
 
+            relations: list[dict] = []
+            for rel in data.get("relatedCompanies", {}).get("items", []):
+                related_company = rel.get("company", {})
+                related_source_id = related_company.get("id")
+                if not related_source_id:
+                    continue
+
+                roles = rel.get("roles") or [None]
+                for role in roles:
+                    relation_type = None
+                    if role:
+                        relation_type = role.get("type") or role.get("name")
+
+                    relations.append(
+                        {
+                            "source_id": data["id"],
+                            "related_source_id": related_source_id,
+                            "relation_type": relation_type,
+                            "description": rel.get("description"),
+                        }
+                    )
+
             rows.append(
                 {
                     "company": company.model_dump(),
@@ -126,6 +151,7 @@ def run_import(self, s3_key: str) -> str:
                     "persons": persons,
                     "roles": roles,
                     "industries": industries,
+                    "relations": relations,
                 }
             )
             processed += 1
