@@ -105,6 +105,35 @@ def load_to_staging(rows: List[Dict], run_id: int) -> None:
                     },
                 )
 
+            for relation in row.get("relations", []):
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO staging_company_relations (
+                            source_id,
+                            related_source_id,
+                            relation_type,
+                            description,
+                            run_id
+                        )
+                        VALUES (
+                            :source_id,
+                            :related_source_id,
+                            :relation_type,
+                            :description,
+                            :run_id
+                        )
+                        """
+                    ),
+                    {
+                        "source_id": relation.get("source_id"),
+                        "related_source_id": relation.get("related_source_id"),
+                        "relation_type": relation.get("relation_type"),
+                        "description": relation.get("description"),
+                        "run_id": run_id,
+                    },
+                )
+
 
 def promote_staging(run_id: int) -> None:
     """Move data from staging tables into the main tables.
@@ -258,7 +287,14 @@ def promote_staging(run_id: int) -> None:
             text(
                 """
                 INSERT INTO company_person_roles (
-                    source_id, person_id, role_name, role_type, role_date, description, demotion, run_id
+                    source_id,
+                    person_id,
+                    role_name,
+                    role_type,
+                    role_date,
+                    description,
+                    demotion,
+                    run_id
                 )
                 SELECT
                     scpr.source_id,
@@ -297,6 +333,43 @@ def promote_staging(run_id: int) -> None:
                 INSERT INTO company_industries (source_id, scheme, code, run_id)
                 SELECT source_id, scheme, code, run_id
                 FROM staging_company_industries
+                WHERE run_id = :run_id
+                """
+            ),
+            {"run_id": run_id},
+        )
+
+        # Replace relations for affected companies
+        conn.execute(
+            text(
+                """
+                DELETE FROM company_relations WHERE source_id IN (
+                    SELECT source_id
+                    FROM staging_company_relations
+                    WHERE run_id = :run_id
+                )
+                """
+            ),
+            {"run_id": run_id},
+        )
+
+        conn.execute(
+            text(
+                """
+                INSERT INTO company_relations (
+                    source_id,
+                    related_source_id,
+                    relation_type,
+                    description,
+                    run_id
+                )
+                SELECT
+                    source_id,
+                    related_source_id,
+                    relation_type,
+                    description,
+                    run_id
+                FROM staging_company_relations
                 WHERE run_id = :run_id
                 """
             ),
