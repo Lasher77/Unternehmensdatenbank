@@ -14,7 +14,8 @@ if ! docker compose ps >/dev/null 2>&1; then
   exit 1
 fi
 
-docker compose up -d --build
+docker compose build backend
+docker compose up -d --build db redis opensearch minio
 
 # Wait for Postgres
 until docker compose exec db pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null 2>&1; do
@@ -26,10 +27,11 @@ until curl -sSf http://localhost:9200 >/dev/null 2>&1; do
   sleep 1
 done
 
-# Run migrations
-for f in backend/migrations/*.sql; do
-  docker compose exec -T db psql -U postgres -d companies < "$f"
-done
+# Run migrations using the backend image so the worker sees the same state
+docker compose run --rm backend python scripts/run_migrations.py
+
+# Start application services after the schema is up-to-date
+docker compose up -d --build backend worker
 
 echo "Backend running at http://localhost:8080" 
 
