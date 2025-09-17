@@ -213,7 +213,7 @@ def promote_staging(run_id: int) -> None:
                     source_person_id, first_name, last_name, birth_date,
                     street, postal_code, city, state, country, lat, lng, data
                 )
-                SELECT
+                SELECT DISTINCT ON (source_person_id)
                     source_person_id,
                     data->'name'->>'firstName',
                     data->'name'->>'lastName',
@@ -228,6 +228,7 @@ def promote_staging(run_id: int) -> None:
                     data
                 FROM staging_persons
                 WHERE run_id = :run_id
+                ORDER BY source_person_id, updated_at DESC
                 ON CONFLICT (source_person_id) DO UPDATE SET
                     first_name = EXCLUDED.first_name,
                     last_name = EXCLUDED.last_name,

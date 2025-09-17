@@ -195,3 +195,50 @@ def test_promote_staging_handles_unparseable_birthdate(
 
     promoted = tables["persons"]["person-1"]
     assert promoted["birth_date"] is None
+
+
+def test_promote_staging_deduplicates_persons(monkeypatch: pytest.MonkeyPatch) -> None:
+    tables: dict[str, Any] = {
+        "staging_companies": [],
+        "staging_persons": [],
+        "persons": {},
+    }
+
+    fake_engine = FakeEngine(tables)
+
+    from backend.app import db as db_module
+
+    monkeypatch.setattr(db_module, "engine", fake_engine)
+
+    rows = [
+        {
+            "company": {"source_id": "company-1", "raw_name": "Example Corp"},
+            "persons": [
+                {
+                    "source_person_id": "person-1",
+                    "data": {
+                        "name": {"firstName": "Ada", "lastName": "Lovelace"},
+                        "birthDate": "1978-05-31",
+                        "address": {},
+                    },
+                },
+                {
+                    "source_person_id": "person-1",
+                    "data": {
+                        "name": {"firstName": "A.", "lastName": "Lovelace"},
+                        "birthDate": "1978-05-31",
+                        "address": {},
+                    },
+                },
+            ],
+        }
+    ]
+
+    staging_loader.load_to_staging(rows, run_id=1)
+
+    assert len(tables["staging_persons"]) == 2
+
+    staging_loader.promote_staging(run_id=1)
+
+    assert len(tables["persons"]) == 1
+    assert "person-1" in tables["persons"]
