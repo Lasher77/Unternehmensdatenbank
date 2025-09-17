@@ -97,3 +97,59 @@ def test_validate_jsonl_finds_duplicate_ids(tmp_path: Path) -> None:
 
     assert report.is_valid
     assert report.duplicate_ids == {"person-1": 2}
+
+
+def test_validate_jsonl_accepts_alternative_birthdate_format(tmp_path: Path) -> None:
+    path = write_jsonl(
+        tmp_path,
+        [
+            {
+                "id": "company-1",
+                "relatedPersons": {
+                    "items": [
+                        {
+                            "person": {
+                                "id": "person-1",
+                                "name": "Max Mustermann",
+                                "address": {"city": "Berlin"},
+                                "birthDate": "31.05.1978",
+                            }
+                        }
+                    ]
+                },
+            }
+        ],
+    )
+
+    report = validate_jsonl(path)
+
+    assert report.is_valid
+    assert report.errors == []
+
+
+def test_validate_jsonl_reports_unparseable_birthdate(tmp_path: Path) -> None:
+    path = write_jsonl(
+        tmp_path,
+        [
+            {
+                "id": "company-1",
+                "relatedPersons": {
+                    "items": [
+                        {
+                            "person": {
+                                "id": "person-1",
+                                "name": "Max Mustermann",
+                                "address": {"city": "Berlin"},
+                                "birthDate": "31.05.78",
+                            }
+                        }
+                    ]
+                },
+            }
+        ],
+    )
+
+    report = validate_jsonl(path)
+
+    assert not report.is_valid
+    assert any("birthDate kann nicht interpretiert" in error for error in report.errors)

@@ -19,6 +19,7 @@ else:  # pragma: no cover - older Python support
 if __package__ is None or __package__ == "":  # pragma: no cover - runtime safety
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from backend.app.utils.date_normalization import normalize_birth_date
 from backend.app.workers.tasks_import import run_import
 
 
@@ -107,11 +108,26 @@ def validate_jsonl(jsonl_path: Path) -> ValidationReport:
                 else:
                     person_counter[str(source_person_id)] += 1
 
-                for field in ("name", "address", "birthDate"):
+                for field in ("name", "address"):
                     if not _is_value_set(person.get(field)):
                         errors.append(
                             "Zeile "
                             f"{line_number}: relatedPersons.items[{idx}].person.{field} fehlt oder ist leer",
+                        )
+
+                birth_date_raw = person.get("birthDate")
+                if not _is_value_set(birth_date_raw):
+                    errors.append(
+                        "Zeile "
+                        f"{line_number}: relatedPersons.items[{idx}].person.birthDate fehlt oder ist leer",
+                    )
+                else:
+                    normalized_birth_date = normalize_birth_date(str(birth_date_raw))
+                    if normalized_birth_date is None:
+                        errors.append(
+                            "Zeile "
+                            f"{line_number}: relatedPersons.items[{idx}].person.birthDate kann nicht interpretiert werden ("
+                            f"{birth_date_raw!r})",
                         )
 
     duplicates = {
