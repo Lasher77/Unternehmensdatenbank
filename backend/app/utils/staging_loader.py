@@ -228,7 +228,7 @@ def promote_staging(run_id: int) -> None:
                     data
                 FROM staging_persons
                 WHERE run_id = :run_id
-                ORDER BY source_person_id, updated_at DESC
+                ORDER BY source_person_id
                 ON CONFLICT (source_person_id) DO UPDATE SET
                     first_name = EXCLUDED.first_name,
                     last_name = EXCLUDED.last_name,
