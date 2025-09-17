@@ -31,6 +31,7 @@ class FakeConnection:
             return
 
         if "INSERT INTO persons" in sql:
+            assert "updated_at" not in sql
             run_id = params["run_id"]
             use_nullif = "NULLIF(data->>'birthDate', '')::date" in sql
 
