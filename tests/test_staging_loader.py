@@ -11,6 +11,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backend.app.utils import staging_loader
+from backend.app.utils.date_normalization import normalize_birth_date
 
 
 class FakeConnection:
@@ -102,6 +103,86 @@ def test_promote_staging_allows_empty_birthdate(monkeypatch: pytest.MonkeyPatch)
                     "data": {
                         "name": {"firstName": "Ada", "lastName": "Lovelace"},
                         "birthDate": "",
+                        "address": {},
+                    },
+                }
+            ],
+        }
+    ]
+
+    staging_loader.load_to_staging(rows, run_id=1)
+    staging_loader.promote_staging(run_id=1)
+
+    promoted = tables["persons"]["person-1"]
+    assert promoted["birth_date"] is None
+
+
+def test_promote_staging_normalizes_birthdate(monkeypatch: pytest.MonkeyPatch) -> None:
+    tables: dict[str, Any] = {
+        "staging_companies": [],
+        "staging_persons": [],
+        "persons": {},
+    }
+
+    fake_engine = FakeEngine(tables)
+
+    from backend.app import db as db_module
+
+    monkeypatch.setattr(db_module, "engine", fake_engine)
+
+    raw_birth = "31.05.1978"
+    normalized_birth = normalize_birth_date(raw_birth)
+    assert normalized_birth == "1978-05-31"
+
+    rows = [
+        {
+            "company": {"source_id": "company-1", "raw_name": "Example Corp"},
+            "persons": [
+                {
+                    "source_person_id": "person-1",
+                    "data": {
+                        "name": {"firstName": "Ada", "lastName": "Lovelace"},
+                        "birthDate": normalized_birth,
+                        "address": {},
+                    },
+                }
+            ],
+        }
+    ]
+
+    staging_loader.load_to_staging(rows, run_id=1)
+    staging_loader.promote_staging(run_id=1)
+
+    promoted = tables["persons"]["person-1"]
+    assert promoted["birth_date"] == date(1978, 5, 31)
+
+
+def test_promote_staging_handles_unparseable_birthdate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tables: dict[str, Any] = {
+        "staging_companies": [],
+        "staging_persons": [],
+        "persons": {},
+    }
+
+    fake_engine = FakeEngine(tables)
+
+    from backend.app import db as db_module
+
+    monkeypatch.setattr(db_module, "engine", fake_engine)
+
+    assert normalize_birth_date("nicht-datum") is None
+
+    rows = [
+        {
+            "company": {"source_id": "company-1", "raw_name": "Example Corp"},
+            "persons": [
+                {
+                    "source_person_id": "person-1",
+                    "data": {
+                        "name": {"firstName": "Ada", "lastName": "Lovelace"},
+                        "birthDate": None,
                         "address": {},
                     },
                 }

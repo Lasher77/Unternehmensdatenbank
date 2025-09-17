@@ -6,6 +6,7 @@ from sqlalchemy import text
 from .celery_app import celery_app
 from ..db import engine
 from ..schemas.company import Company, Event
+from ..utils.date_normalization import normalize_birth_date
 from ..utils.staging_loader import load_to_staging, promote_staging
 from ..opensearch_client import (
     ensure_companies_index,
@@ -95,7 +96,20 @@ def run_import(self, s3_key: str) -> str:
                 source_person_id = p.get("id")
                 if not source_person_id:
                     continue
-                persons.append({"source_person_id": source_person_id, "data": p})
+                person_data = dict(p)
+                raw_birth = person_data.get("birthDate")
+                if isinstance(raw_birth, str):
+                    normalized_birth = normalize_birth_date(raw_birth)
+                elif raw_birth is not None:
+                    normalized_birth = normalize_birth_date(str(raw_birth))
+                else:
+                    normalized_birth = None
+                if normalized_birth is not None:
+                    person_data["birthDate"] = normalized_birth
+                elif "birthDate" in person_data or raw_birth is not None:
+                    person_data["birthDate"] = None
+
+                persons.append({"source_person_id": source_person_id, "data": person_data})
                 description = rp.get("description")
                 for role in rp.get("roles", []):
                     demotion = role.get("demotion")
