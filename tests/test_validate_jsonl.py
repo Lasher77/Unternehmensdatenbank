@@ -3,10 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import sys
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scripts.validate_jsonl import ValidationReport, validate_jsonl
+import scripts.validate_jsonl as validate_jsonl_module
+from scripts.validate_jsonl import ValidationReport, start_import, validate_jsonl
 
 
 def write_jsonl(tmp_path: Path, entries: list[dict]) -> Path:
@@ -153,3 +155,63 @@ def test_validate_jsonl_reports_unparseable_birthdate(tmp_path: Path) -> None:
 
     assert not report.is_valid
     assert any("birthDate kann nicht interpretiert" in error for error in report.errors)
+
+
+class DummyResult:
+    def __init__(self, value: Any) -> None:
+        self._value = value
+
+    def get(self, timeout: float | None = None) -> Any:  # pragma: no cover - signature parity
+        return self._value
+
+
+def test_start_import_promotes_without_worker(monkeypatch, tmp_path: Path) -> None:
+    tables: dict[str, list[dict[str, Any]]] = {"staging": [], "companies": []}
+    promoted_run_ids: list[int] = []
+
+    def fake_run_import_apply(*, args=None, kwargs=None, **_: Any) -> DummyResult:
+        args = args or ()
+        jsonl_arg = args[0] if args else kwargs["jsonl_path"]
+        jsonl_path = Path(jsonl_arg)
+        run_id = 42
+
+        with jsonl_path.open(encoding="utf-8") as handle:
+            for line in handle:
+                data = line.strip()
+                if not data:
+                    continue
+                tables["staging"].append({"run_id": run_id, "company": json.loads(data)})
+
+        return DummyResult({"s3_key": str(jsonl_path), "run_id": run_id})
+
+    def fake_finalize_import_apply(*, args=None, kwargs=None, **_: Any) -> DummyResult:
+        args = args or ()
+        run_id = args[0] if args else kwargs["run_id"]
+        promoted_run_ids.append(run_id)
+
+        for row in list(tables["staging"]):
+            if row["run_id"] == run_id:
+                tables["companies"].append(row["company"])
+                tables["staging"].remove(row)
+
+        return DummyResult(run_id)
+
+    monkeypatch.setattr(validate_jsonl_module.run_import, "apply", fake_run_import_apply)
+    monkeypatch.setattr(validate_jsonl_module.finalize_import, "apply", fake_finalize_import_apply)
+
+    jsonl_path = write_jsonl(
+        tmp_path,
+        [
+            {
+                "id": "company-1",
+                "relatedPersons": {"items": []},
+            }
+        ],
+    )
+
+    result = start_import(jsonl_path)
+
+    assert result == {"s3_key": str(jsonl_path), "run_id": 42}
+    assert promoted_run_ids == [42]
+    assert tables["staging"] == []
+    assert [company["id"] for company in tables["companies"]] == ["company-1"]

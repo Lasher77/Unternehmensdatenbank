@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import TypedDict
 
 from sqlalchemy import text
 
@@ -17,8 +18,13 @@ from ..opensearch_client import (
 BATCH_SIZE = 1000
 
 
+class ImportRunResult(TypedDict):
+    s3_key: str
+    run_id: int
+
+
 @celery_app.task(bind=True)
-def run_import(self, s3_key: str) -> str:
+def run_import(self, s3_key: str) -> ImportRunResult:
     """Import companies from an NDJSON file.
 
     The ``s3_key`` parameter is treated as a local file path. Each line is
@@ -181,7 +187,7 @@ def run_import(self, s3_key: str) -> str:
             report_progress()
 
     finalize_import.delay(run_id)
-    return s3_key
+    return {"s3_key": s3_key, "run_id": run_id}
 
 
 @celery_app.task

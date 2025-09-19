@@ -20,7 +20,7 @@ if __package__ is None or __package__ == "":  # pragma: no cover - runtime safet
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backend.app.utils.date_normalization import normalize_birth_date
-from backend.app.workers.tasks_import import run_import
+from backend.app.workers.tasks_import import finalize_import, run_import
 
 
 @dataclass_decorator
@@ -137,11 +137,20 @@ def validate_jsonl(jsonl_path: Path) -> ValidationReport:
     return ValidationReport(errors=errors, duplicate_ids=sorted_duplicates)
 
 
-def start_import(jsonl_path: Path) -> str:
-    """Run the import task for ``jsonl_path`` synchronously."""
+def start_import(jsonl_path: Path) -> dict[str, int | str]:
+    """Run the import and finalization tasks for ``jsonl_path`` synchronously."""
 
     result = run_import.apply(args=[str(jsonl_path)])
-    return result.get()
+    payload = result.get()
+
+    if not isinstance(payload, dict) or "run_id" not in payload:
+        raise RuntimeError("Importlauf lieferte kein gültiges Ergebnis zurück")
+
+    run_id = payload["run_id"]
+    finalize_result = finalize_import.apply(args=[run_id])
+    finalize_result.get()
+
+    return payload
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
