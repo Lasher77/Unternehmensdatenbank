@@ -80,9 +80,10 @@ export function useImportSummary(runId?: number, enabled = true) {
       const { data } = await api.get<ImportSummaryResponse>(`/api/imports/${runId}`);
       return data;
     },
-    refetchInterval: (query) => {
-      const data = query.state.data as ImportSummaryResponse | undefined;
-      if (!data) return 2000;
+    refetchInterval: (data) => {
+      if (!data) {
+        return 2000;
+      }
       return data.finished ? false : 2000;
     }
   });
