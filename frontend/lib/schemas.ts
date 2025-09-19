@@ -21,6 +21,7 @@ export type SearchRequest = z.infer<typeof SearchRequestSchema>;
 export const CompanySchema = z.object({
   source_id: z.string(),
   name: z.string(),
+  status: z.string().optional(),
   lat: z.number().optional(),
   lng: z.number().optional(),
   events: z.array(z.string()).optional()

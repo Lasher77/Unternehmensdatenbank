@@ -15,8 +15,20 @@ class DummyOSClient:
             "hits": {
                 "total": {"value": 2},
                 "hits": [
-                    {"_source": {"source_id": "1", "name": "Foo"}},
-                    {"_source": {"source_id": "2", "name": "Bar"}},
+                    {
+                        "_source": {
+                            "source_id": "1",
+                            "name": "Foo",
+                            "status": "active",
+                        }
+                    },
+                    {
+                        "_source": {
+                            "source_id": "2",
+                            "name": "Bar",
+                            "status": "inactive",
+                        }
+                    },
                 ],
             },
             "aggregations": {
@@ -38,8 +50,8 @@ def test_search_companies() -> None:
     data = response.json()
     assert data["total"] == 2
     assert data["results"] == [
-        {"source_id": "1", "name": "Foo"},
-        {"source_id": "2", "name": "Bar"},
+        {"source_id": "1", "name": "Foo", "status": "active"},
+        {"source_id": "2", "name": "Bar", "status": "inactive"},
     ]
     assert data["facets"]["status"][0] == {"value": "active", "count": 2}
     app.dependency_overrides.clear()
