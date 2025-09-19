@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import TypedDict
+from typing import TypedDict, Union
 
 from sqlalchemy import text
 
@@ -229,13 +229,19 @@ def finalize_import(run_id: int) -> int:
 
 
 @celery_app.task
-def cleanup_import_file(file_path: str) -> str:
+def cleanup_import_file(
+    result: Union[ImportRunResult, str]
+) -> Union[ImportRunResult, str]:
     """Delete a temporary import file once it is no longer needed."""
 
-    path = Path(file_path)
+    if isinstance(result, str):
+        path = Path(result)
+    else:
+        path = Path(result["s3_key"])
+
     try:
         path.unlink()
     except FileNotFoundError:
         pass
 
-    return file_path
+    return result
