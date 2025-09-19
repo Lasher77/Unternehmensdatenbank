@@ -77,7 +77,34 @@ def test_validate_jsonl_reports_missing_fields(tmp_path: Path) -> None:
     assert any("person.id" in error for error in report.errors)
     assert any("person.name" in error for error in report.errors)
     assert any("person.address" in error for error in report.errors)
-    assert any("person.birthDate" in error for error in report.errors)
+    assert all("person.birthDate fehlt" not in error for error in report.errors)
+
+
+def test_validate_jsonl_accepts_missing_birthdate(tmp_path: Path) -> None:
+    path = write_jsonl(
+        tmp_path,
+        [
+            {
+                "id": "company-1",
+                "relatedPersons": {
+                    "items": [
+                        {
+                            "person": {
+                                "id": "person-1",
+                                "name": "Max Mustermann",
+                                "address": {"city": "Berlin"},
+                            }
+                        }
+                    ]
+                },
+            }
+        ],
+    )
+
+    report = validate_jsonl(path)
+
+    assert report.is_valid
+    assert report.errors == []
 
 
 def test_validate_jsonl_finds_duplicate_ids(tmp_path: Path) -> None:
