@@ -1,25 +1,51 @@
 'use client';
 
 import { useState } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { useCreateExport } from '@/lib/queries';
+import { SearchRequest } from '@/lib/schemas';
 import { toast } from './toast';
 
-export default function ExportDialog({ selectedIds }: { selectedIds: string[] }) {
+interface ExportDialogProps {
+  selectedIds: string[];
+  request: SearchRequest;
+}
+
+export default function ExportDialog({ selectedIds, request }: ExportDialogProps) {
   const [open, setOpen] = useState(false);
   const [format, setFormat] = useState('csv');
   const [preset, setPreset] = useState('core');
   const createExport = useCreateExport();
-  const params = useSearchParams();
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const body: any = {
+    const body: Record<string, unknown> = {
       format,
-      preset,
-      ids: selectedIds.length > 0 ? selectedIds : undefined,
-      filters: Object.fromEntries(params.entries())
+      preset
     };
+
+    if (selectedIds.length > 0) {
+      body.ids = selectedIds;
+    }
+
+    const filterKeys: (keyof SearchRequest)[] = [
+      'query',
+      'state',
+      'city',
+      'postal_code',
+      'wz',
+      'status',
+      'legal_form',
+      'lat',
+      'lng',
+      'radius_km'
+    ];
+
+    filterKeys.forEach((key) => {
+      const value = request[key];
+      if (value !== undefined) {
+        (body as any)[key] = value;
+      }
+    });
     try {
       await createExport.mutateAsync(body);
       toast.success('Export gestartet');

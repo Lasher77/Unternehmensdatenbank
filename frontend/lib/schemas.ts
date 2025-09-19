@@ -3,10 +3,18 @@ import { z } from "zod";
 export const SearchRequestSchema = z.object({
   // Free text search query
   query: z.string().optional(),
+  state: z.string().optional(),
+  city: z.string().optional(),
+  postal_code: z.string().optional(),
+  wz: z.string().optional(),
+  status: z.string().optional(),
+  legal_form: z.string().optional(),
+  lat: z.number().optional(),
+  lng: z.number().optional(),
+  radius_km: z.number().optional(),
   page: z.number().int().min(1).default(1),
   per_page: z.number().int().min(1).max(100).default(20),
-  sort: z.string().optional(),
-  filters: z.record(z.string(), z.array(z.string())).optional()
+  sort: z.string().optional()
 });
 export type SearchRequest = z.infer<typeof SearchRequestSchema>;
 
