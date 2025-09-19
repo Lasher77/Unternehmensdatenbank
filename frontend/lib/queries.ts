@@ -6,7 +6,8 @@ import {
   SearchResponse,
   ImportResponse,
   ImportSummaryResponse,
-  CompanyDetailResponse
+  CompanyDetailResponse,
+  TableCountsResponse
 } from "./schemas";
 import { sleep } from "./utils";
 
@@ -85,6 +86,16 @@ export function useImportSummary(runId?: number, enabled = true) {
         return 2000;
       }
       return data.finished ? false : 2000;
+    }
+  });
+}
+
+export function useTableCounts() {
+  return useQuery<TableCountsResponse>({
+    queryKey: ["table-counts"],
+    queryFn: async () => {
+      const { data } = await api.get<TableCountsResponse>("/api/stats/table-counts");
+      return data;
     }
   });
 }
