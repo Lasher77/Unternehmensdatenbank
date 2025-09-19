@@ -72,6 +72,7 @@ def search_companies(client: OpenSearch, query: Dict[str, Any]) -> Dict[str, Any
         {
             "source_id": h.get("_source", {}).get("source_id", ""),
             "name": h.get("_source", {}).get("name"),
+            "status": h.get("_source", {}).get("status"),
         }
         for h in hits.get("hits", [])
     ]

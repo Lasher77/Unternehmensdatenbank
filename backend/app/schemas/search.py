@@ -22,6 +22,7 @@ class CompanySearchRequest(BaseModel):
 class CompanyItem(BaseModel):
     source_id: str
     name: Optional[str] = None
+    status: Optional[str] = None
 
 
 class FacetBucket(BaseModel):
