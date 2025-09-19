@@ -1,10 +1,14 @@
-from fastapi import APIRouter, Form, UploadFile
+import json
+from fastapi import APIRouter, Form, HTTPException, UploadFile
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from ..workers.tasks_import import cleanup_import_file, run_import
+from sqlalchemy import text
 
-from ..schemas.import_ import ImportResponse
+from ..db import engine
+from ..workers.tasks_import import cleanup_import_file, finalize_import, run_import
+
+from ..schemas.import_ import ImportResponse, ImportSummaryResponse
 
 router = APIRouter(prefix="/api/imports", tags=["imports"])
 
@@ -33,10 +37,8 @@ async def create_import(
 
         await file.close()
 
-        task = run_import.apply_async(
-            args=[temp_path],
-            link=cleanup_import_file.s(),
-        )
+        workflow = run_import.s(temp_path) | finalize_import.s() | cleanup_import_file.s()
+        task = workflow.apply_async()
         task_id = task.id
     else:
         task_id = ""
@@ -45,4 +47,43 @@ async def create_import(
         import_label=label,
         s3_key=filename,
         task_id=task_id,
+    )
+
+
+@router.get("/{run_id}", response_model=ImportSummaryResponse)
+def get_import_summary(run_id: int) -> ImportSummaryResponse:
+    with engine.begin() as conn:
+        row = (
+            conn.execute(
+                text(
+                    """
+                    SELECT run_id, finished_at, summary
+                    FROM ingestion_run
+                    WHERE run_id = :run_id
+                    """
+                ),
+                {"run_id": run_id},
+            )
+            .mappings()
+            .first()
+        )
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="Import run not found")
+
+    summary_value = row.get("summary")
+    if isinstance(summary_value, str):
+        summary = json.loads(summary_value)
+    elif summary_value is None:
+        summary = {}
+    else:
+        summary = dict(summary_value)
+
+    finished_at = row.get("finished_at")
+
+    return ImportSummaryResponse(
+        run_id=row["run_id"],
+        summary=summary,
+        finished=finished_at is not None,
+        finished_at=finished_at,
     )
