@@ -258,7 +258,7 @@ def finalize_import(result: Union[ImportRunResult, int]) -> ImportRunResult:
                 """
                 UPDATE ingestion_run
                 SET finished_at = :finished_at,
-                    summary = :summary::jsonb
+                    summary = CAST(:summary AS jsonb)
                 WHERE run_id = :run_id
                 """
             ),
