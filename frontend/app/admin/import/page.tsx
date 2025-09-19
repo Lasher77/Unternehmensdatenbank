@@ -15,7 +15,8 @@ export default function ImportPage() {
       name: file.name,
       size: file.size,
       status: 'ready' as const,
-      progress: 0
+      progress: 0,
+      summaryStatus: 'idle' as const
     }));
     setItems((prev) => [...prev, ...newItems]);
   }

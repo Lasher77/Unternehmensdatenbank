@@ -45,6 +45,14 @@ export const ImportResponseSchema = z.object({
 });
 export type ImportResponse = z.infer<typeof ImportResponseSchema>;
 
+export const ImportSummaryResponseSchema = z.object({
+  run_id: z.number(),
+  summary: z.record(z.string(), z.number()).default({}),
+  finished: z.boolean(),
+  finished_at: z.string().nullable().optional()
+});
+export type ImportSummaryResponse = z.infer<typeof ImportSummaryResponseSchema>;
+
 export const EventSchema = z.object({
   event_id: z.number().optional(),
   event_date: z.string().optional(),
