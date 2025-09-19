@@ -7,7 +7,7 @@ from sqlalchemy.engine import Connection
 from .config import get_settings
 from .deps import get_db_conn, get_os_client
 from .opensearch_client import ensure_companies_index, get_opensearch
-from .routers import companies, exports, imports, salesforce, search, tasks
+from .routers import companies, exports, imports, salesforce, search, stats, tasks
 
 app = FastAPI(title="BVMW Companies API")
 
@@ -26,6 +26,7 @@ app.include_router(companies.router)
 app.include_router(imports.router)
 app.include_router(exports.router)
 app.include_router(salesforce.router)
+app.include_router(stats.router)
 app.include_router(tasks.router)
 
 

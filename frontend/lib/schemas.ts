@@ -114,3 +114,14 @@ export const CompanyDetailResponseSchema = z.object({
   industry_codes: z.array(IndustryCodeSchema)
 });
 export type CompanyDetailResponse = z.infer<typeof CompanyDetailResponseSchema>;
+
+export const TableCountSchema = z.object({
+  table: z.string(),
+  rows: z.number()
+});
+export type TableCount = z.infer<typeof TableCountSchema>;
+
+export const TableCountsResponseSchema = z.object({
+  counts: z.array(TableCountSchema)
+});
+export type TableCountsResponse = z.infer<typeof TableCountsResponseSchema>;
