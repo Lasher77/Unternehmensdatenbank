@@ -20,7 +20,23 @@ if __package__ is None or __package__ == "":  # pragma: no cover - runtime safet
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backend.app.utils.date_normalization import normalize_birth_date
-from backend.app.workers.tasks_import import finalize_import, run_import
+
+try:
+    from backend.app.workers.tasks_import import finalize_import, run_import
+except ModuleNotFoundError:  # pragma: no cover - optional dependency guard for tests
+    class _DeferredTask:
+        """Placeholder to allow tests to patch Celery tasks when dependencies are missing."""
+
+        def __init__(self, name: str) -> None:
+            self._name = name
+
+        def apply(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            raise RuntimeError(
+                f"{self._name} ist nicht verfügbar. Fehlt eine optionale Abhängigkeit?",
+            )
+
+    run_import = _DeferredTask("run_import")
+    finalize_import = _DeferredTask("finalize_import")
 
 
 @dataclass_decorator
@@ -116,12 +132,7 @@ def validate_jsonl(jsonl_path: Path) -> ValidationReport:
                         )
 
                 birth_date_raw = person.get("birthDate")
-                if not _is_value_set(birth_date_raw):
-                    errors.append(
-                        "Zeile "
-                        f"{line_number}: relatedPersons.items[{idx}].person.birthDate fehlt oder ist leer",
-                    )
-                else:
+                if _is_value_set(birth_date_raw):
                     normalized_birth_date = normalize_birth_date(str(birth_date_raw))
                     if normalized_birth_date is None:
                         errors.append(
