@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TypedDict, Union
 
@@ -18,9 +19,11 @@ from ..opensearch_client import (
 BATCH_SIZE = 1000
 
 
-class ImportRunResult(TypedDict):
+class ImportRunResult(TypedDict, total=False):
     s3_key: str
     run_id: int
+    summary: dict[str, int]
+    finished_at: str
 
 
 @celery_app.task(bind=True)
@@ -186,13 +189,19 @@ def run_import(self, s3_key: str) -> ImportRunResult:
             rows = []
             report_progress()
 
-    finalize_import.delay(run_id)
     return {"s3_key": s3_key, "run_id": run_id}
 
 
 @celery_app.task
-def finalize_import(run_id: int) -> int:
+def finalize_import(result: Union[ImportRunResult, int]) -> ImportRunResult:
     """Promote staging data for ``run_id`` into the main tables."""
+
+    if isinstance(result, dict):
+        run_id = result["run_id"]
+        run_result: ImportRunResult = dict(result)
+    else:
+        run_id = int(result)
+        run_result = {"run_id": run_id}
 
     promote_staging(run_id)
 
@@ -221,11 +230,52 @@ def finalize_import(run_id: int) -> int:
             .all()
         )
 
+        table_queries = {
+            "companies": "SELECT COUNT(*) FROM companies WHERE seen_in_run = :run_id",
+            "events": "SELECT COUNT(*) FROM events WHERE run_id = :run_id",
+            "company_person_roles": (
+                "SELECT COUNT(*) FROM company_person_roles WHERE run_id = :run_id"
+            ),
+            "company_industries": (
+                "SELECT COUNT(*) FROM company_industries WHERE run_id = :run_id"
+            ),
+            "company_relations": (
+                "SELECT COUNT(*) FROM company_relations WHERE run_id = :run_id"
+            ),
+            "company_history": (
+                "SELECT COUNT(*) FROM company_history WHERE run_id = :run_id"
+            ),
+        }
+
+        summary: dict[str, int] = {}
+        for table_name, query in table_queries.items():
+            count = conn.execute(text(query), {"run_id": run_id}).scalar_one()
+            summary[table_name] = int(count)
+
+        finished_at = datetime.now(timezone.utc)
+        conn.execute(
+            text(
+                """
+                UPDATE ingestion_run
+                SET finished_at = :finished_at,
+                    summary = :summary::jsonb
+                WHERE run_id = :run_id
+                """
+            ),
+            {
+                "finished_at": finished_at,
+                "summary": json.dumps(summary),
+                "run_id": run_id,
+            },
+        )
+
     client = get_opensearch()
     ensure_companies_index(client)
     index_companies(client, companies)
 
-    return run_id
+    run_result["summary"] = summary
+    run_result["finished_at"] = finished_at.isoformat()
+    return run_result
 
 
 @celery_app.task
