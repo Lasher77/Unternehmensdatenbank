@@ -5,6 +5,7 @@ import {
   SearchRequest,
   SearchResponse,
   ImportResponse,
+  ImportSummaryResponse,
   CompanyDetailResponse
 } from "./schemas";
 import { sleep } from "./utils";
@@ -65,5 +66,24 @@ export function useTaskPoller(taskId?: string) {
       return data;
     },
     refetchInterval: 2000
+  });
+}
+
+export function useImportSummary(runId?: number, enabled = true) {
+  return useQuery<ImportSummaryResponse>({
+    queryKey: ["import-summary", runId],
+    enabled: Boolean(runId) && enabled,
+    queryFn: async () => {
+      if (!runId) {
+        throw new Error("runId is required to fetch the import summary");
+      }
+      const { data } = await api.get<ImportSummaryResponse>(`/api/imports/${runId}`);
+      return data;
+    },
+    refetchInterval: (query) => {
+      const data = query.state.data as ImportSummaryResponse | undefined;
+      if (!data) return 2000;
+      return data.finished ? false : 2000;
+    }
   });
 }
