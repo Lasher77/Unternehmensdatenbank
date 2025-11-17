@@ -150,6 +150,32 @@ def test_promote_staging_allows_empty_birthdate(monkeypatch: pytest.MonkeyPatch)
     assert promoted["birth_date"] is None
 
 
+def test_load_to_staging_normalizes_terminated(monkeypatch: pytest.MonkeyPatch) -> None:
+    tables: dict[str, Any] = {"staging_companies": []}
+
+    fake_engine = FakeEngine(tables)
+
+    from backend.app import db as db_module
+
+    monkeypatch.setattr(db_module, "engine", fake_engine)
+
+    rows = [
+        {
+            "company": {
+                "source_id": "company-1",
+                "raw_name": "Example Corp",
+                "terminated": "ja",
+            }
+        }
+    ]
+
+    staging_loader.load_to_staging(rows, run_id=1)
+
+    stored = tables["staging_companies"][0]
+    company_payload = json.loads(stored["data"])
+    assert company_payload["terminated"] is True
+
+
 def test_promote_staging_normalizes_birthdate(monkeypatch: pytest.MonkeyPatch) -> None:
     tables: dict[str, Any] = {
         "staging_companies": [],
