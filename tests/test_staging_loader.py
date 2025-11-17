@@ -374,6 +374,12 @@ def test_promote_staging_trims_coordinate_and_country_values(
     assert tables["companies"], "expected company insert statement to run"
     for insert in tables["companies"]:
         sql = insert["sql"]
-        assert "NULLIF(btrim(data->>'lat'), '')::double precision" in sql
-        assert "NULLIF(btrim(data->>'lng'), '')::double precision" in sql
+        assert (
+            "WHEN NULLIF(btrim(data->>'lat'), '') ~ '^[-+]?[0-9]+(\\.[0-9]+)?$'"
+            in sql
+        )
+        assert (
+            "WHEN NULLIF(btrim(data->>'lng'), '') ~ '^[-+]?[0-9]+(\\.[0-9]+)?$'"
+            in sql
+        )
         assert "COALESCE(NULLIF(btrim(data->>'country'), ''), 'DE')" in sql

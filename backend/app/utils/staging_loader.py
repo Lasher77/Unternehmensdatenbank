@@ -185,8 +185,16 @@ def promote_staging(run_id: int) -> None:
                     data->>'city',
                     data->>'state',
                     COALESCE(NULLIF(btrim(data->>'country'), ''), 'DE'),
-                    NULLIF(btrim(data->>'lat'), '')::double precision,
-                    NULLIF(btrim(data->>'lng'), '')::double precision,
+                    CASE
+                        WHEN NULLIF(btrim(data->>'lat'), '') ~ '^[-+]?[0-9]+(\\.[0-9]+)?$'
+                        THEN NULLIF(btrim(data->>'lat'), '')::double precision
+                        ELSE NULL
+                    END,
+                    CASE
+                        WHEN NULLIF(btrim(data->>'lng'), '') ~ '^[-+]?[0-9]+(\\.[0-9]+)?$'
+                        THEN NULLIF(btrim(data->>'lng'), '')::double precision
+                        ELSE NULL
+                    END,
                     data->>'register_id',
                     data->>'register_city',
                     data->>'register_country',
