@@ -3,9 +3,26 @@
 from __future__ import annotations
 
 import json
-from typing import Dict, List
+from typing import Any, Dict, List
 
 from sqlalchemy import text
+
+from ..schemas.company import _normalize_optional_bool
+
+
+def _normalize_company_payload(company: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a copy of ``company`` with normalized ``terminated`` value."""
+
+    normalized = dict(company)
+
+    if "terminated" in normalized:
+        terminated = _normalize_optional_bool(normalized.get("terminated"))
+        if terminated is None:
+            normalized.pop("terminated", None)
+        else:
+            normalized["terminated"] = terminated
+
+    return normalized
 
 
 def load_to_staging(rows: List[Dict], run_id: int) -> None:
@@ -23,7 +40,7 @@ def load_to_staging(rows: List[Dict], run_id: int) -> None:
 
     with engine.begin() as conn:
         for row in rows:
-            company = row["company"]
+            company = _normalize_company_payload(row["company"])
             conn.execute(
                 text(
                     "INSERT INTO staging_companies (source_id, data, run_id) "

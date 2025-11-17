@@ -2,8 +2,8 @@ from typing import Any, List, Optional
 
 from pydantic import BaseModel, field_validator
 
-_TRUE_VALUES = {"true", "t", "1", "yes", "y"}
-_FALSE_VALUES = {"false", "f", "0", "no", "n"}
+_TRUE_VALUES = {"true", "t", "1", "yes", "y", "ja"}
+_FALSE_VALUES = {"false", "f", "0", "no", "n", "nein"}
 
 
 def _normalize_optional_bool(value: Any) -> bool | None:
