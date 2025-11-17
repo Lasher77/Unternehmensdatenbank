@@ -167,7 +167,7 @@ def promote_staging(run_id: int) -> None:
                     data->>'postal_code',
                     data->>'city',
                     data->>'state',
-                    COALESCE(data->>'country', 'DE'),
+                    COALESCE(NULLIF(data->>'country', ''), 'DE'),
                     NULLIF(data->>'lat', '')::double precision,
                     NULLIF(data->>'lng', '')::double precision,
                     data->>'register_id',
@@ -222,7 +222,7 @@ def promote_staging(run_id: int) -> None:
                     data->'address'->>'postalCode',
                     data->'address'->>'city',
                     data->'address'->>'state',
-                    COALESCE(data->'address'->>'country', 'DE'),
+                    COALESCE(NULLIF(data->'address'->>'country', ''), 'DE'),
                     NULLIF(data->'address'->>'lat', '')::double precision,
                     NULLIF(data->'address'->>'lng', '')::double precision,
                     data
