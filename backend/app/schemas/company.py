@@ -1,6 +1,34 @@
-from typing import List, Optional
+from typing import Any, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+_TRUE_VALUES = {"true", "t", "1", "yes", "y"}
+_FALSE_VALUES = {"false", "f", "0", "no", "n"}
+
+
+def _normalize_optional_bool(value: Any) -> bool | None:
+    """Return a boolean for known truthy/falsey values, otherwise ``None``."""
+
+    if value is None or isinstance(value, bool):
+        return value
+
+    if isinstance(value, (int, float)):
+        if value == 1:
+            return True
+        if value == 0:
+            return False
+        return None
+
+    if isinstance(value, str):
+        cleaned = value.strip().lower()
+        if not cleaned:
+            return None
+        if cleaned in _TRUE_VALUES:
+            return True
+        if cleaned in _FALSE_VALUES:
+            return False
+
+    return None
 
 
 class Event(BaseModel):
@@ -28,6 +56,13 @@ class Company(BaseModel):
     register_unique_key: Optional[str] = None
     status: Optional[str] = None
     terminated: Optional[bool] = None
+
+    @field_validator("terminated", mode="before")
+    @classmethod
+    def _coerce_terminated(
+        cls, value: Any  # noqa: ANN401 - required by pydantic
+    ) -> bool | None:
+        return _normalize_optional_bool(value)
 
 
 class CompanyDetailResponse(BaseModel):
