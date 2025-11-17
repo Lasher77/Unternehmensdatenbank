@@ -64,7 +64,7 @@ class FakeConnection:
         if "INSERT INTO persons" in sql:
             assert "updated_at" not in sql
             run_id = params["run_id"]
-            use_nullif = "NULLIF(data->>'birthDate', '')::date" in sql
+            use_nullif = "NULLIF(btrim(data->>'birthDate'), '')::date" in sql
 
             for row in list(self._tables.get("staging_persons", [])):
                 if row["run_id"] != run_id:
@@ -312,3 +312,42 @@ def test_promote_staging_handles_invalid_terminated_value(
     assert tables["companies"], "expected company insert statement to run"
     for insert in tables["companies"]:
         assert "::boolean" not in insert["sql"]
+
+
+def test_promote_staging_trims_coordinate_and_country_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tables: dict[str, Any] = {
+        "staging_companies": [],
+        "staging_persons": [],
+        "companies": [],
+        "persons": {},
+    }
+
+    fake_engine = FakeEngine(tables)
+
+    from backend.app import db as db_module
+
+    monkeypatch.setattr(db_module, "engine", fake_engine)
+
+    rows = [
+        {
+            "company": {
+                "source_id": "company-1",
+                "raw_name": "Example Corp",
+                "country": "  ",
+                "lat": " 52.52 ",
+                "lng": "13.40",
+            }
+        }
+    ]
+
+    staging_loader.load_to_staging(rows, run_id=1)
+    staging_loader.promote_staging(run_id=1)
+
+    assert tables["companies"], "expected company insert statement to run"
+    for insert in tables["companies"]:
+        sql = insert["sql"]
+        assert "NULLIF(btrim(data->>'lat'), '')::double precision" in sql
+        assert "NULLIF(btrim(data->>'lng'), '')::double precision" in sql
+        assert "COALESCE(NULLIF(btrim(data->>'country'), ''), 'DE')" in sql
