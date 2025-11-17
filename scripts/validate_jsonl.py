@@ -65,6 +65,58 @@ def _is_value_set(value: object) -> bool:
     return True
 
 
+def _validate_coordinate_value(
+    *,
+    value: object,
+    line_number: int,
+    context: str,
+    errors: list[str],
+) -> None:
+    """Append an error when ``value`` cannot be interpreted as float."""
+
+    if not _is_value_set(value):
+        return
+
+    if isinstance(value, (int, float)):
+        return
+
+    if isinstance(value, str):
+        candidate = value.strip()
+        if not candidate:
+            return
+        candidate = candidate.replace(",", ".")
+    else:
+        candidate = str(value)
+
+    try:
+        float(candidate)
+    except (TypeError, ValueError):
+        errors.append(
+            f"Zeile {line_number}: {context} enthält keinen numerischen Wert ({value!r})",
+        )
+
+
+def _validate_coordinate_fields(
+    address: object,
+    *,
+    prefix: str,
+    line_number: int,
+    errors: list[str],
+) -> None:
+    """Validate ``lat``/``lng`` inside ``address`` when it is a mapping."""
+
+    if not isinstance(address, dict):
+        return
+
+    for axis in ("lat", "lng"):
+        _validate_coordinate_value(
+            value=address.get(axis),
+            line_number=line_number,
+            context=f"{prefix}.{axis}",
+            errors=errors,
+        )
+
+
 def validate_jsonl(jsonl_path: Path) -> ValidationReport:
     """Validate ``jsonl_path`` and return a :class:`ValidationReport`."""
 
@@ -84,6 +136,13 @@ def validate_jsonl(jsonl_path: Path) -> ValidationReport:
                     f"Zeile {line_number}: Ungültiges JSON ({exc.msg})",
                 )
                 continue
+
+            _validate_coordinate_fields(
+                data.get("address"),
+                prefix="address",
+                line_number=line_number,
+                errors=errors,
+            )
 
             related_persons = data.get("relatedPersons")
             if related_persons is None:
@@ -130,6 +189,13 @@ def validate_jsonl(jsonl_path: Path) -> ValidationReport:
                             "Zeile "
                             f"{line_number}: relatedPersons.items[{idx}].person.{field} fehlt oder ist leer",
                         )
+
+                _validate_coordinate_fields(
+                    person.get("address"),
+                    prefix=f"relatedPersons.items[{idx}].person.address",
+                    line_number=line_number,
+                    errors=errors,
+                )
 
                 birth_date_raw = person.get("birthDate")
                 if _is_value_set(birth_date_raw):

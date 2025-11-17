@@ -184,6 +184,53 @@ def test_validate_jsonl_reports_unparseable_birthdate(tmp_path: Path) -> None:
     assert any("birthDate kann nicht interpretiert" in error for error in report.errors)
 
 
+def test_validate_jsonl_reports_invalid_company_coordinates(tmp_path: Path) -> None:
+    path = write_jsonl(
+        tmp_path,
+        [
+            {
+                "id": "company-1",
+                "address": {"lat": "foo", "lng": "13.37"},
+            }
+        ],
+    )
+
+    report = validate_jsonl(path)
+
+    assert not report.is_valid
+    assert any("address.lat" in error for error in report.errors)
+
+
+def test_validate_jsonl_reports_invalid_person_coordinates(tmp_path: Path) -> None:
+    path = write_jsonl(
+        tmp_path,
+        [
+            {
+                "id": "company-1",
+                "relatedPersons": {
+                    "items": [
+                        {
+                            "person": {
+                                "id": "person-1",
+                                "name": "Max Mustermann",
+                                "address": {"city": "Berlin", "lat": "foo"},
+                                "birthDate": "1990-01-01",
+                            }
+                        }
+                    ]
+                },
+            }
+        ],
+    )
+
+    report = validate_jsonl(path)
+
+    assert not report.is_valid
+    assert any(
+        "relatedPersons.items[0].person.address.lat" in error for error in report.errors
+    )
+
+
 class DummyResult:
     def __init__(self, value: Any) -> None:
         self._value = value

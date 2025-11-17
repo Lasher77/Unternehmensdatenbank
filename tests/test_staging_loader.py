@@ -66,6 +66,8 @@ class FakeConnection:
             run_id = params["run_id"]
             use_nullif = "NULLIF(btrim(data->>'birthDate'), '')::date" in sql
 
+            self._tables.setdefault("persons_sql", []).append(sql)
+
             for row in list(self._tables.get("staging_persons", [])):
                 if row["run_id"] != run_id:
                     continue
@@ -383,3 +385,51 @@ def test_promote_staging_trims_coordinate_and_country_values(
             in sql
         )
         assert "COALESCE(NULLIF(btrim(data->>'country'), ''), 'DE')" in sql
+
+
+def test_promote_staging_sanitizes_person_coordinates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tables: dict[str, Any] = {
+        "staging_companies": [],
+        "staging_persons": [],
+        "companies": [],
+        "persons": {},
+    }
+
+    fake_engine = FakeEngine(tables)
+
+    from backend.app import db as db_module
+
+    monkeypatch.setattr(db_module, "engine", fake_engine)
+
+    rows = [
+        {
+            "company": {"source_id": "company-1", "raw_name": "Example Corp"},
+            "persons": [
+                {
+                    "source_person_id": "person-1",
+                    "data": {
+                        "name": {"firstName": "Ada", "lastName": "Lovelace"},
+                        "birthDate": "1978-05-31",
+                        "address": {"lat": "not-a-number", "lng": "13.4"},
+                    },
+                }
+            ],
+        }
+    ]
+
+    staging_loader.load_to_staging(rows, run_id=1)
+    staging_loader.promote_staging(run_id=1)
+
+    sql_statements = tables.get("persons_sql") or []
+    assert sql_statements, "expected person insert statement to run"
+    sql = " ".join(sql_statements[-1].split())
+    assert (
+        "WHEN NULLIF(btrim(data->'address'->>'lat'), '') ~ '^[-+]?[0-9]+(\\.[0-9]+)?$'"
+        in sql
+    )
+    assert (
+        "WHEN NULLIF(btrim(data->'address'->>'lng'), '') ~ '^[-+]?[0-9]+(\\.[0-9]+)?$'"
+        in sql
+    )
