@@ -175,7 +175,7 @@ def promote_staging(run_id: int) -> None:
                     data->>'register_country',
                     data->>'register_unique_key',
                     data->>'status',
-                    (data->>'terminated')::boolean,
+                    NULLIF(data->>'terminated', '')::boolean,
                     data,
                     run_id
                 FROM staging_companies
