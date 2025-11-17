@@ -259,8 +259,18 @@ def promote_staging(run_id: int) -> None:
                         NULLIF(btrim(data->'address'->>'country'), ''),
                         'DE'
                     ),
-                    NULLIF(btrim(data->'address'->>'lat'), '')::double precision,
-                    NULLIF(btrim(data->'address'->>'lng'), '')::double precision,
+                    CASE
+                        WHEN NULLIF(btrim(data->'address'->>'lat'), '') ~
+                            '^[-+]?[0-9]+(\\.[0-9]+)?$'
+                        THEN NULLIF(btrim(data->'address'->>'lat'), '')::double precision
+                        ELSE NULL
+                    END,
+                    CASE
+                        WHEN NULLIF(btrim(data->'address'->>'lng'), '') ~
+                            '^[-+]?[0-9]+(\\.[0-9]+)?$'
+                        THEN NULLIF(btrim(data->'address'->>'lng'), '')::double precision
+                        ELSE NULL
+                    END,
                     data
                 FROM staging_persons
                 WHERE run_id = :run_id
