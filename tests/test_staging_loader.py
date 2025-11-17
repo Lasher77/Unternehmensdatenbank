@@ -30,6 +30,37 @@ class FakeConnection:
             self._tables.setdefault("staging_persons", []).append(dict(params))
             return
 
+        if "INSERT INTO companies" in sql:
+            run_id = params["run_id"]
+            uses_direct_boolean_cast = "::boolean" in sql
+
+            if uses_direct_boolean_cast:
+                for row in self._tables.get("staging_companies", []):
+                    if row["run_id"] != run_id:
+                        continue
+
+                    company_data = json.loads(row["data"])
+                    terminated = company_data.get("terminated")
+
+                    if isinstance(terminated, str) and terminated.lower() not in {
+                        "true",
+                        "false",
+                        "t",
+                        "f",
+                        "1",
+                        "0",
+                        "yes",
+                        "no",
+                        "y",
+                        "n",
+                    }:
+                        raise ValueError(
+                            f'invalid input syntax for type boolean: "{terminated}"'
+                        )
+
+            self._tables.setdefault("companies", []).append({"sql": sql, "run_id": run_id})
+            return
+
         if "INSERT INTO persons" in sql:
             assert "updated_at" not in sql
             run_id = params["run_id"]
@@ -86,6 +117,7 @@ def test_promote_staging_allows_empty_birthdate(monkeypatch: pytest.MonkeyPatch)
     tables: dict[str, Any] = {
         "staging_companies": [],
         "staging_persons": [],
+        "companies": [],
         "persons": {},
     }
 
@@ -122,6 +154,7 @@ def test_promote_staging_normalizes_birthdate(monkeypatch: pytest.MonkeyPatch) -
     tables: dict[str, Any] = {
         "staging_companies": [],
         "staging_persons": [],
+        "companies": [],
         "persons": {},
     }
 
@@ -164,6 +197,7 @@ def test_promote_staging_handles_unparseable_birthdate(
     tables: dict[str, Any] = {
         "staging_companies": [],
         "staging_persons": [],
+        "companies": [],
         "persons": {},
     }
 
@@ -202,6 +236,7 @@ def test_promote_staging_deduplicates_persons(monkeypatch: pytest.MonkeyPatch) -
     tables: dict[str, Any] = {
         "staging_companies": [],
         "staging_persons": [],
+        "companies": [],
         "persons": {},
     }
 
@@ -243,3 +278,37 @@ def test_promote_staging_deduplicates_persons(monkeypatch: pytest.MonkeyPatch) -
 
     assert len(tables["persons"]) == 1
     assert "person-1" in tables["persons"]
+
+
+def test_promote_staging_handles_invalid_terminated_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tables: dict[str, Any] = {
+        "staging_companies": [],
+        "staging_persons": [],
+        "companies": [],
+        "persons": {},
+    }
+
+    fake_engine = FakeEngine(tables)
+
+    from backend.app import db as db_module
+
+    monkeypatch.setattr(db_module, "engine", fake_engine)
+
+    rows = [
+        {
+            "company": {
+                "source_id": "company-1",
+                "raw_name": "Example Corp",
+                "terminated": "n/a",
+            }
+        }
+    ]
+
+    staging_loader.load_to_staging(rows, run_id=1)
+    staging_loader.promote_staging(run_id=1)
+
+    assert tables["companies"], "expected company insert statement to run"
+    for insert in tables["companies"]:
+        assert "::boolean" not in insert["sql"]

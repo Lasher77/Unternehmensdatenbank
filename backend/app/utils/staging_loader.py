@@ -175,7 +175,15 @@ def promote_staging(run_id: int) -> None:
                     data->>'register_country',
                     data->>'register_unique_key',
                     data->>'status',
-                    NULLIF(data->>'terminated', '')::boolean,
+                    CASE
+                        WHEN lower(NULLIF(btrim(data->>'terminated'), '')) IN
+                            ('true', 't', '1', 'yes', 'y')
+                        THEN true
+                        WHEN lower(NULLIF(btrim(data->>'terminated'), '')) IN
+                            ('false', 'f', '0', 'no', 'n')
+                        THEN false
+                        ELSE NULL
+                    END,
                     data,
                     run_id
                 FROM staging_companies
