@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TypedDict, Union
+from typing import Any, TypedDict, Union
 
 from sqlalchemy import text
 
@@ -17,6 +17,22 @@ from ..opensearch_client import (
 )
 
 BATCH_SIZE = 1000
+
+
+def _ensure_dict(value: Any) -> dict[str, Any]:
+    """Return ``value`` when it is a ``dict``, otherwise an empty mapping."""
+
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
+def _ensure_list(value: Any) -> list[Any]:
+    """Return ``value`` when it is a list, otherwise an empty list."""
+
+    if isinstance(value, list):
+        return value
+    return []
 
 
 class ImportRunResult(TypedDict, total=False):
@@ -69,22 +85,34 @@ def run_import(self, s3_key: str) -> ImportRunResult:
                 continue
             data = json.loads(line)
 
+            source_id = data.get("id")
+            if not source_id:
+                raise ValueError("Einträge ohne id können nicht importiert werden")
+
+            name_data = _ensure_dict(data.get("name"))
+            address_data = _ensure_dict(data.get("address"))
+            register_data = _ensure_dict(data.get("register"))
+            events_data = _ensure_dict(data.get("events"))
+            related_persons_data = _ensure_dict(data.get("relatedPersons"))
+            related_companies_data = _ensure_dict(data.get("relatedCompanies"))
+            segment_codes_data = _ensure_dict(data.get("segmentCodes"))
+
             company = Company(
-                source_id=data["id"],
+                source_id=str(source_id),
                 raw_name=data.get("rawName"),
-                legal_form=data.get("name", {}).get("legalForm"),
-                name=data.get("name", {}).get("name"),
-                street=data.get("address", {}).get("street"),
-                postal_code=data.get("address", {}).get("postalCode"),
-                city=data.get("address", {}).get("city"),
-                state=data.get("address", {}).get("state"),
-                country=data.get("address", {}).get("country"),
-                lat=data.get("address", {}).get("lat"),
-                lng=data.get("address", {}).get("lng"),
-                register_id=data.get("register", {}).get("id"),
-                register_city=data.get("register", {}).get("city"),
-                register_country=data.get("register", {}).get("country"),
-                register_unique_key=data.get("register", {}).get("uniqueKey"),
+                legal_form=name_data.get("legalForm"),
+                name=name_data.get("name"),
+                street=address_data.get("street"),
+                postal_code=address_data.get("postalCode"),
+                city=address_data.get("city"),
+                state=address_data.get("state"),
+                country=address_data.get("country"),
+                lat=address_data.get("lat"),
+                lng=address_data.get("lng"),
+                register_id=register_data.get("id"),
+                register_city=register_data.get("city"),
+                register_country=register_data.get("country"),
+                register_unique_key=register_data.get("uniqueKey"),
                 status=data.get("status"),
                 terminated=data.get("terminated"),
             )
@@ -95,16 +123,20 @@ def run_import(self, s3_key: str) -> ImportRunResult:
                     event_type=item.get("type"),
                     description=item.get("description"),
                 ).model_dump()
-                for item in data.get("events", {}).get("items", [])
+                for item in _ensure_list(events_data.get("items"))
             ]
 
             persons: list[dict] = []
             person_roles: list[dict] = []
-            for rp in data.get("relatedPersons", {}).get("items", []):
-                p = rp.get("person", {})
+            for rp in _ensure_list(related_persons_data.get("items")):
+                if not isinstance(rp, dict):
+                    continue
+
+                p = _ensure_dict(rp.get("person"))
                 source_person_id = p.get("id")
                 if not source_person_id:
                     continue
+                source_person_id = str(source_person_id)
                 person_data = dict(p)
                 raw_birth = person_data.get("birthDate")
                 if isinstance(raw_birth, str):
@@ -120,11 +152,13 @@ def run_import(self, s3_key: str) -> ImportRunResult:
 
                 persons.append({"source_person_id": source_person_id, "data": person_data})
                 description = rp.get("description")
-                for role in rp.get("roles", []):
+                for role in _ensure_list(rp.get("roles")):
+                    if not isinstance(role, dict):
+                        continue
                     demotion = role.get("demotion")
                     person_roles.append(
                         {
-                            "source_id": data["id"],
+                            "source_id": company.source_id,
                             "source_person_id": source_person_id,
                             "role_name": role.get("name"),
                             "role_type": role.get("type"),
@@ -135,32 +169,40 @@ def run_import(self, s3_key: str) -> ImportRunResult:
                     )
 
             industries: list[dict] = []
-            for scheme, codes in data.get("segmentCodes", {}).items():
+            for scheme, codes in segment_codes_data.items():
+                if not isinstance(codes, list):
+                    continue
                 for code in codes:
                     industries.append(
                         {
-                            "source_id": data["id"],
+                            "source_id": company.source_id,
                             "scheme": scheme,
                             "code": code,
                         }
                     )
 
             relations: list[dict] = []
-            for rel in data.get("relatedCompanies", {}).get("items", []):
-                related_company = rel.get("company", {})
+            for rel in _ensure_list(related_companies_data.get("items")):
+                if not isinstance(rel, dict):
+                    continue
+                related_company = _ensure_dict(rel.get("company"))
                 related_source_id = related_company.get("id")
                 if not related_source_id:
                     continue
+                related_source_id = str(related_source_id)
 
-                rel_roles = rel.get("roles") or [None]
+                rel_roles = rel.get("roles")
+                if not isinstance(rel_roles, list):
+                    rel_roles = [None]
+
                 for role in rel_roles:
                     relation_type = None
-                    if role:
+                    if isinstance(role, dict):
                         relation_type = role.get("type") or role.get("name")
 
                     relations.append(
                         {
-                            "source_id": data["id"],
+                            "source_id": company.source_id,
                             "related_source_id": related_source_id,
                             "relation_type": relation_type,
                             "description": rel.get("description"),
