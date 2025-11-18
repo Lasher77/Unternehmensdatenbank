@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 from sqlalchemy import text
 
 from ..schemas.company import _normalize_optional_bool
+from .country_normalization import normalize_country_code
 
 
 def _normalize_company_payload(company: Dict[str, Any]) -> Dict[str, Any]:
@@ -21,6 +22,10 @@ def _normalize_company_payload(company: Dict[str, Any]) -> Dict[str, Any]:
             normalized.pop("terminated", None)
         else:
             normalized["terminated"] = terminated
+
+    for field in ("country", "register_country"):
+        if field in normalized:
+            normalized[field] = normalize_country_code(normalized.get(field))
 
     return normalized
 

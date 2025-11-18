@@ -2,6 +2,8 @@ from typing import Any, List, Optional
 
 from pydantic import BaseModel, field_validator
 
+from ..utils.country_normalization import normalize_country_code
+
 _TRUE_VALUES = {"true", "t", "1", "yes", "y", "ja"}
 _FALSE_VALUES = {"false", "f", "0", "no", "n", "nein"}
 
@@ -63,6 +65,13 @@ class Company(BaseModel):
         cls, value: Any  # noqa: ANN401 - required by pydantic
     ) -> bool | None:
         return _normalize_optional_bool(value)
+
+    @field_validator("country", "register_country", mode="before")
+    @classmethod
+    def _normalize_country(
+        cls, value: Any  # noqa: ANN401 - required by pydantic
+    ) -> str | None:
+        return normalize_country_code(value)
 
 
 class CompanyDetailResponse(BaseModel):
