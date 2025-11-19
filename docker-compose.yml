@@ -31,10 +31,14 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-companies}
     ports:
       - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
   redis:
     image: redis:7
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
   opensearch:
     image: opensearchproject/opensearch:2.11.1
     environment:
@@ -47,6 +51,8 @@ services:
       memlock:
         soft: -1
         hard: -1
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
   minio:
     image: minio/minio
     environment:
@@ -56,5 +62,11 @@ services:
     ports:
       - "9000:9000"
       - "9001:9001"
+    volumes:
+      - minio_data:/data
 volumes:
   import_tmp:
+  db_data:
+  redis_data:
+  opensearch_data:
+  minio_data:
