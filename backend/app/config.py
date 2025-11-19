@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     # Origins allowed for CORS
     allowed_origins: list[str] = ["http://localhost:3000"]
 
+    salesforce_match_api_token: str | None = None
+
     class Config:
         env_file = ".env"
 
