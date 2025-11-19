@@ -35,6 +35,52 @@ def _ensure_list(value: Any) -> list[Any]:
     return []
 
 
+def _extract_contact_details(extras: list[Any]) -> tuple[str | None, str | None, str | None]:
+    """Return email, website and phone values from ``extras`` entries if present."""
+
+    email: str | None = None
+    website: str | None = None
+    phone: str | None = None
+
+    for extra in extras:
+        if not isinstance(extra, dict):
+            continue
+        for item in _ensure_list(extra.get("items")):
+            if not isinstance(item, dict):
+                continue
+            item_id = str(item.get("id") or "").lower()
+            value = item.get("value")
+            if not value:
+                continue
+            if email is None and item_id in {"email", "mail"}:
+                email = value
+            elif website is None and item_id in {"url", "website", "homepage"}:
+                website = value
+            elif phone is None and item_id in {"phone", "tel", "telephone"}:
+                phone = value
+
+    return email, website, phone
+
+
+def _extract_revenue(financials: dict[str, Any]) -> float | None:
+    """Return the revenue value from a ``financials`` block if available."""
+
+    for item in _ensure_list(financials.get("items")):
+        if not isinstance(item, dict):
+            continue
+        if item.get("id") != "Revenue":
+            continue
+        value = item.get("value")
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            try:
+                return float(value)
+            except ValueError:
+                continue
+    return None
+
+
 class ImportRunResult(TypedDict, total=False):
     s3_key: str
     run_id: int
@@ -92,16 +138,33 @@ def run_import(self, s3_key: str) -> ImportRunResult:
             name_data = _ensure_dict(data.get("name"))
             address_data = _ensure_dict(data.get("address"))
             register_data = _ensure_dict(data.get("register"))
+            extras_data = _ensure_list(data.get("extras"))
+            financials_data = _ensure_dict(data.get("financials"))
+            contact_data = _ensure_dict(data.get("contact"))
             events_data = _ensure_dict(data.get("events"))
             related_persons_data = _ensure_dict(data.get("relatedPersons"))
             related_companies_data = _ensure_dict(data.get("relatedCompanies"))
             segment_codes_data = _ensure_dict(data.get("segmentCodes"))
+
+            email, website, phone = _extract_contact_details(extras_data)
+            if not email:
+                email = contact_data.get("email")
+            if not website:
+                website = contact_data.get("website")
+            if not phone:
+                phone = contact_data.get("phone")
+
+            revenue = _extract_revenue(financials_data)
 
             company = Company(
                 source_id=str(source_id),
                 raw_name=data.get("rawName"),
                 legal_form=name_data.get("legalForm"),
                 name=name_data.get("name"),
+                email=email,
+                website=website,
+                phone=phone,
+                revenue=revenue,
                 street=address_data.get("street"),
                 postal_code=address_data.get("postalCode"),
                 city=address_data.get("city"),

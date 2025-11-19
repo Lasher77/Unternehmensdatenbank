@@ -93,6 +93,10 @@ export const IndustryCodeSchema = z.object({
 export const CompanyDetailCompanySchema = CompanySchema.extend({
   raw_name: z.string().optional(),
   legal_form: z.string().optional(),
+  email: z.string().optional(),
+  website: z.string().optional(),
+  phone: z.string().optional(),
+  revenue: z.number().optional(),
   street: z.string().optional(),
   postal_code: z.string().optional(),
   city: z.string().optional(),

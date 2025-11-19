@@ -22,8 +22,19 @@ def get_company(
         db.execute(
             text(
                 """
-            SELECT source_id, raw_name, legal_form, name_norm, street,
-                   postal_code, city, state, country, lat, lng,
+            SELECT source_id, raw_name, legal_form, name_norm,
+                   COALESCE(email, data->>'email') AS email,
+                   COALESCE(website, data->>'website') AS website,
+                   COALESCE(phone, data->>'phone') AS phone,
+                   COALESCE(
+                       revenue,
+                       CASE
+                           WHEN NULLIF(btrim(data->>'revenue'), '') ~ '^[-+]?[0-9]+(\\.[0-9]+)?$'
+                           THEN (data->>'revenue')::double precision
+                           ELSE NULL
+                       END
+                   ) AS revenue,
+                   street, postal_code, city, state, country, lat, lng,
                    register_id, register_city, register_country,
                    register_unique_key, status, terminated
             FROM companies

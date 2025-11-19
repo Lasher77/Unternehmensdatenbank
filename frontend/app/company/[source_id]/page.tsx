@@ -49,8 +49,54 @@ export default function CompanyPage({ params }: { params: { source_id: string } 
         <Address company={company} />
       </div>
       <div>
+        <h2 className="font-medium">Kontakt</h2>
+        <div className="space-y-1">
+          {company.email && (
+            <div>
+              <span className="font-semibold">E-Mail: </span>
+              <a href={`mailto:${company.email}`} className="text-blue-600 underline">
+                {company.email}
+              </a>
+            </div>
+          )}
+          {company.phone && (
+            <div>
+              <span className="font-semibold">Telefon: </span>
+              <a href={`tel:${company.phone}`} className="text-blue-600 underline">
+                {company.phone}
+              </a>
+            </div>
+          )}
+          {company.website && (
+            <div>
+              <span className="font-semibold">Website: </span>
+              <a
+                href={company.website.startsWith('http') ? company.website : `https://${company.website}`}
+                className="text-blue-600 underline"
+                target="_blank"
+                rel="noreferrer"
+              >
+                {company.website}
+              </a>
+            </div>
+          )}
+          {!company.email && !company.phone && !company.website && <div>Keine Kontaktdaten vorhanden</div>}
+        </div>
+      </div>
+      <div>
         <h2 className="font-medium">Industry</h2>
         <IndustryCodes codes={industry_codes} />
+      </div>
+      <div>
+        <h2 className="font-medium">Finanzen</h2>
+        {company.revenue ? (
+          <div>
+            <span className="font-semibold">Umsatz: </span>
+            {new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(company.revenue)}
+          </div>
+        ) : (
+          <div>Keine Finanzdaten vorhanden</div>
+        )}
       </div>
       <div>
         <h2 className="font-medium">Persons</h2>
