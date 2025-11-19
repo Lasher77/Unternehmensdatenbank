@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Salesforce Match API Tester</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+        background-color: #0f172a;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: radial-gradient(circle at top, #1d3557 0%, #0f172a 55%, #020617 100%);
+        color: #e2e8f0;
+        display: flex;
+        justify-content: center;
+        padding: 24px;
+      }
+
+      .app-shell {
+        width: min(1040px, 100%);
+        background: rgba(15, 23, 42, 0.85);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 18px;
+        padding: 32px;
+        box-shadow: 0 20px 70px rgba(2, 6, 23, 0.7);
+      }
+
+      h1 {
+        margin-top: 0;
+        font-size: clamp(1.5rem, 4vw, 2.3rem);
+        color: #f8fafc;
+      }
+
+      h2 {
+        margin-bottom: 6px;
+        font-size: 1.1rem;
+      }
+
+      p.subline {
+        margin-bottom: 32px;
+        color: #cbd5f5;
+      }
+
+      form {
+        display: grid;
+        gap: 18px;
+      }
+
+      .grid-2 {
+        display: grid;
+        gap: 18px;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
+
+      label {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-size: 0.95rem;
+      }
+
+      input,
+      select,
+      textarea {
+        border-radius: 10px;
+        border: 1px solid rgba(148, 163, 184, 0.4);
+        background: rgba(15, 23, 42, 0.7);
+        color: #e2e8f0;
+        padding: 10px 12px;
+        font: inherit;
+        transition: border 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      textarea {
+        min-height: 120px;
+        resize: vertical;
+      }
+
+      input:focus,
+      select:focus,
+      textarea:focus {
+        outline: none;
+        border-color: #38bdf8;
+        box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.4);
+      }
+
+      fieldset {
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        border-radius: 12px;
+        padding: 18px;
+      }
+
+      fieldset legend {
+        padding: 0 8px;
+        font-weight: 600;
+      }
+
+      button {
+        appearance: none;
+        border: none;
+        border-radius: 999px;
+        padding: 14px 28px;
+        background: linear-gradient(120deg, #22d3ee, #3b82f6);
+        color: #0f172a;
+        font-weight: 600;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: transform 0.15s ease, filter 0.2s ease;
+      }
+
+      button:hover {
+        transform: translateY(-2px);
+        filter: brightness(1.05);
+      }
+
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .response-section {
+        margin-top: 32px;
+        display: grid;
+        gap: 16px;
+      }
+
+      .card {
+        border-radius: 14px;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        background: rgba(2, 6, 23, 0.6);
+        padding: 18px;
+      }
+
+      .status-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 14px;
+        border-radius: 999px;
+        font-weight: 600;
+        background: rgba(34, 211, 238, 0.12);
+      }
+
+      pre {
+        margin: 0;
+        font-size: 0.9rem;
+        overflow-x: auto;
+        white-space: pre-wrap;
+      }
+
+      code {
+        font-family: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono",
+          Menlo, monospace;
+      }
+
+      .curl-preview {
+        font-size: 0.85rem;
+        color: #a5b4fc;
+        line-height: 1.5;
+      }
+
+      .helper-text {
+        font-size: 0.85rem;
+        color: #94a3b8;
+      }
+
+      @media (max-width: 640px) {
+        body {
+          padding: 16px;
+        }
+
+        .app-shell {
+          padding: 20px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app-shell">
+      <header>
+        <h1>Salesforce Match Endpoint Tester</h1>
+        <p class="subline">
+          Mit diesem Tool kannst Du das <code>/api/salesforce/match-company</code>
+          Endpoint unserer Datenbank außerhalb von Salesforce prüfen. Gib einfach Deine
+          Ziel-URL, das erwartete Token sowie die gewünschten Match-Felder ein – die
+          Anfrage wird automatisch gebaut und ausgeführt.
+        </p>
+      </header>
+
+      <form id="request-form">
+        <fieldset>
+          <legend>Verbindung</legend>
+          <div class="grid-2">
+            <label>
+              API Basis-URL
+              <input
+                id="baseUrl"
+                name="baseUrl"
+                type="url"
+                value="http://localhost:8080"
+                placeholder="https://api.meine-domain.de"
+                required
+              />
+              <span class="helper-text"
+                >z. B. die lokal laufende FastAPI-Instanz oder ein Staging-Endpoint.</span
+              >
+            </label>
+            <label>
+              Endpoint Pfad
+              <input
+                id="endpoint"
+                name="endpoint"
+                value="/api/salesforce/match-company"
+                placeholder="/api/salesforce/match-company"
+                required
+              />
+              <span class="helper-text"
+                >Standard ist das Match-Endpoint, /api/salesforce/ping ist ebenfalls
+                verfügbar.</span
+              >
+            </label>
+          </div>
+          <div class="grid-2">
+            <label>
+              Request Typ
+              <select id="requestType" name="requestType">
+                <option value="match">Match Company (POST)</option>
+                <option value="ping">Ping (GET)</option>
+              </select>
+              <span class="helper-text"
+                >Der Typ legt HTTP-Methode und den erwarteten Body fest.</span
+              >
+            </label>
+            <label>
+              Zugriffstoken (Bearer)
+              <input
+                id="token"
+                name="token"
+                type="password"
+                placeholder="trage hier das Token aus der Konfiguration ein"
+                required
+              />
+            </label>
+          </div>
+          <label>
+            Zusätzliche Header (optional, JSON)
+            <textarea
+              id="extraHeaders"
+              name="extraHeaders"
+              placeholder='{"X-Debug": "1"}'
+            ></textarea>
+          </label>
+        </fieldset>
+
+        <fieldset id="builder-section">
+          <legend>Match Anfrage aufbauen</legend>
+          <p class="helper-text">
+            Alle Felder sind optional, allerdings muss mindestens ein Query-Feld gefüllt
+            werden. Nutze den Bereich "Eigenes JSON" wenn Du vollständig selbst steuern
+            möchtest, was gesendet wird.
+          </p>
+          <div class="grid-2">
+            <label>
+              Kontext: Quelle
+              <input id="contextSource" placeholder="salesforce" />
+            </label>
+            <label>
+              Kontext: Objekt-Typ
+              <input id="contextObjectType" placeholder="Lead" />
+            </label>
+            <label>
+              Kontext: External ID
+              <input id="contextExternalId" placeholder="00Q..." />
+            </label>
+          </div>
+
+          <h2>Suchfelder</h2>
+          <div class="grid-2">
+            <label>Firmenname<input id="queryName" placeholder="ACME GmbH" /></label>
+            <label>Straße<input id="queryStreet" placeholder="Musterstraße 1" /></label>
+            <label>PLZ<input id="queryPostalCode" placeholder="10115" /></label>
+            <label>Stadt<input id="queryCity" placeholder="Berlin" /></label>
+            <label>Land<input id="queryCountry" placeholder="DE" /></label>
+            <label>Website oder Domain<input id="queryWebsite" placeholder="acme.de" /></label>
+            <label>Telefon<input id="queryPhone" placeholder="030 123456" /></label>
+            <label>Register-ID<input id="queryRegisterId" placeholder="HRB12345" /></label>
+            <label>USt-ID<input id="queryVatId" placeholder="DE123456789" /></label>
+          </div>
+
+          <h2>Optionen</h2>
+          <div class="grid-2">
+            <label>
+              Min Score
+              <input id="optionsMinScore" type="number" min="0" max="1" step="0.05" value="0.5" />
+            </label>
+            <label>
+              Max. Ergebnisse
+              <input id="optionsMaxResults" type="number" min="1" max="50" value="10" />
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset id="custom-body-wrapper">
+          <legend>Eigenes JSON (optional)</legend>
+          <label>
+            Kompletter Request Body
+            <textarea
+              id="customBody"
+              placeholder='{"query": {"name": "ACME"}}'
+            ></textarea>
+            <span class="helper-text"
+              >Wenn befüllt, wird dieses JSON 1:1 gesendet und der Builder ignoriert.</span
+            >
+          </label>
+        </fieldset>
+
+        <button type="submit" id="send-btn">Request absenden</button>
+      </form>
+
+      <section class="response-section">
+        <div class="card" id="request-preview">
+          <strong>Request Vorschau</strong>
+          <div class="curl-preview" id="curl">-</div>
+        </div>
+        <div class="card">
+          <div class="status-chip" id="status">Noch kein Request gesendet</div>
+          <div id="response-time"></div>
+        </div>
+        <div class="card">
+          <strong>Antwort Header</strong>
+          <pre id="response-headers">-</pre>
+        </div>
+        <div class="card">
+          <strong>Antwort Body</strong>
+          <pre id="response-body">-</pre>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const form = document.getElementById("request-form");
+      const statusEl = document.getElementById("status");
+      const responseTimeEl = document.getElementById("response-time");
+      const responseBodyEl = document.getElementById("response-body");
+      const responseHeadersEl = document.getElementById("response-headers");
+      const curlEl = document.getElementById("curl");
+      const sendBtn = document.getElementById("send-btn");
+      const builderSection = document.getElementById("builder-section");
+      const customBodyWrapper = document.getElementById("custom-body-wrapper");
+      const requestTypeEl = document.getElementById("requestType");
+      const endpointInput = document.getElementById("endpoint");
+
+      const persistKeys = ["baseUrl", "token", "endpoint", "requestType"];
+      persistKeys.forEach((key) => {
+        const input = document.getElementById(key);
+        const saved = localStorage.getItem(`sfMatchTester:${key}`);
+        if (saved && input) {
+          input.value = saved;
+        }
+        input?.addEventListener("input", () => {
+          localStorage.setItem(`sfMatchTester:${key}`, input.value);
+        });
+        input?.addEventListener("change", () => {
+          localStorage.setItem(`sfMatchTester:${key}`, input.value);
+        });
+      });
+
+      endpointInput.dataset.lastType = requestTypeEl.value;
+      const defaultEndpoints = {
+        match: "/api/salesforce/match-company",
+        ping: "/api/salesforce/ping",
+      };
+      if (
+        requestTypeEl.value === "ping" &&
+        endpointInput.value === defaultEndpoints.match
+      ) {
+        endpointInput.value = defaultEndpoints.ping;
+      }
+
+      requestTypeEl.addEventListener("change", () => {
+        const previousType = endpointInput.dataset.lastType;
+        const previousDefault = defaultEndpoints[previousType];
+        if (endpointInput.value === previousDefault) {
+          endpointInput.value = defaultEndpoints[requestTypeEl.value];
+        }
+        endpointInput.dataset.lastType = requestTypeEl.value;
+        toggleSections();
+        updateCurlPreview();
+      });
+
+      function toggleSections() {
+        const isPing = requestTypeEl.value === "ping";
+        builderSection.style.display = isPing ? "none" : "block";
+        customBodyWrapper.style.display = isPing ? "none" : "block";
+      }
+      toggleSections();
+
+      function buildUrl(baseUrl, endpoint) {
+        const sanitizedBase = baseUrl.replace(/\/$/, "");
+        const sanitizedEndpoint = endpoint.startsWith("/")
+          ? endpoint
+          : `/${endpoint}`;
+        return `${sanitizedBase}${sanitizedEndpoint}`;
+      }
+
+      function value(id) {
+        const el = document.getElementById(id);
+        return el ? el.value.trim() : "";
+      }
+
+      function removeEmpty(obj) {
+        return Object.fromEntries(
+          Object.entries(obj).filter(([, val]) => val !== undefined && val !== "")
+        );
+      }
+
+      function buildMatchPayload() {
+        const context = removeEmpty({
+          source: value("contextSource"),
+          object_type: value("contextObjectType"),
+          external_id: value("contextExternalId"),
+        });
+
+        const query = removeEmpty({
+          name: value("queryName"),
+          street: value("queryStreet"),
+          postal_code: value("queryPostalCode"),
+          city: value("queryCity"),
+          country: value("queryCountry"),
+          website: value("queryWebsite"),
+          phone: value("queryPhone"),
+          register_id: value("queryRegisterId"),
+          vat_id: value("queryVatId"),
+        });
+
+        const optionsRaw = {
+          min_score: value("optionsMinScore"),
+          max_results: value("optionsMaxResults"),
+        };
+        const options = {};
+        if (optionsRaw.min_score !== "") {
+          const parsed = Number(optionsRaw.min_score);
+          if (!Number.isNaN(parsed)) {
+            options.min_score = parsed;
+          }
+        }
+        if (optionsRaw.max_results !== "") {
+          const parsed = Number(optionsRaw.max_results);
+          if (!Number.isNaN(parsed)) {
+            options.max_results = parsed;
+          }
+        }
+
+        const payload = { query };
+        if (Object.keys(context).length) {
+          payload.context = context;
+        }
+        if (Object.keys(options).length) {
+          payload.options = options;
+        }
+        return payload;
+      }
+
+      function buildRequestBody({ silent = false } = {}) {
+        if (requestTypeEl.value === "ping") {
+          return null;
+        }
+        const customRaw = value("customBody");
+        if (customRaw) {
+          try {
+            const parsed = JSON.parse(customRaw);
+            return JSON.stringify(parsed, null, 2);
+          } catch (error) {
+            if (!silent) {
+              alert("Eigenes JSON ist ungültig: " + error.message);
+            }
+            throw error;
+          }
+        }
+        const payload = buildMatchPayload();
+        if (!Object.keys(payload.query).length) {
+          if (!silent) {
+            alert(
+              "Bitte mindestens ein Feld im Query-Abschnitt füllen oder eigenes JSON angeben."
+            );
+          }
+          throw new Error("missing-query");
+        }
+        return JSON.stringify(payload, null, 2);
+      }
+
+      function updateCurlPreview() {
+        const baseUrl = value("baseUrl");
+        const endpoint = value("endpoint");
+        const token = value("token") || "<TOKEN>";
+        if (!baseUrl || !endpoint) {
+          curlEl.textContent = "-";
+          return;
+        }
+        const method = requestTypeEl.value === "ping" ? "GET" : "POST";
+        let bodySnippet = "";
+        if (method === "POST") {
+          try {
+            const body = buildRequestBody({ silent: true });
+            if (body) {
+              bodySnippet = `  -d '${body.replace(/'/g, "'\\''")}'`;
+            }
+          } catch {
+            // ignore preview errors
+          }
+        }
+        const url = buildUrl(baseUrl, endpoint);
+        const lines = [
+          `curl -X ${method} '${url}'`,
+          `  -H 'Authorization: Bearer ${token}'`,
+        ];
+        if (method === "POST") {
+          lines.push("  -H 'Content-Type: application/json'");
+        }
+        const extraHeaders = value("extraHeaders");
+        if (extraHeaders) {
+          try {
+            const parsed = JSON.parse(extraHeaders);
+            Object.entries(parsed).forEach(([key, val]) => {
+              lines.push(`  -H '${key}: ${val}'`);
+            });
+          } catch {
+            lines.push("  # Zusätzliche Header enthalten ungültiges JSON");
+          }
+        }
+        if (bodySnippet) {
+          lines.push(bodySnippet);
+        }
+        curlEl.textContent = lines.join(" \\\n");
+      }
+
+      [
+        "baseUrl",
+        "endpoint",
+        "token",
+        "extraHeaders",
+        "contextSource",
+        "contextObjectType",
+        "contextExternalId",
+        "queryName",
+        "queryStreet",
+        "queryPostalCode",
+        "queryCity",
+        "queryCountry",
+        "queryWebsite",
+        "queryPhone",
+        "queryRegisterId",
+        "queryVatId",
+        "optionsMinScore",
+        "optionsMaxResults",
+        "customBody",
+      ].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener("input", () => {
+          updateCurlPreview();
+        });
+      });
+      updateCurlPreview();
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const baseUrl = value("baseUrl");
+        const endpoint = value("endpoint");
+        const token = value("token");
+        if (!baseUrl || !endpoint || !token) {
+          alert("Bitte Basis-URL, Endpoint und Token ausfüllen.");
+          return;
+        }
+
+        let headers = {
+          Authorization: `Bearer ${token}`,
+        };
+        const extraHeadersRaw = value("extraHeaders");
+        if (extraHeadersRaw) {
+          try {
+            headers = { ...headers, ...JSON.parse(extraHeadersRaw) };
+          } catch (error) {
+            alert("Zusätzliche Header müssen gültiges JSON sein.");
+            return;
+          }
+        }
+
+        const method = requestTypeEl.value === "ping" ? "GET" : "POST";
+        let body = null;
+        if (method === "POST") {
+          try {
+            body = buildRequestBody();
+          } catch (error) {
+            if (error.message !== "missing-query") {
+              console.error(error);
+            }
+            return;
+          }
+          headers["Content-Type"] = headers["Content-Type"] || "application/json";
+        }
+
+        const url = buildUrl(baseUrl, endpoint);
+        sendBtn.disabled = true;
+        statusEl.textContent = "Sende Request ...";
+        statusEl.style.background = "rgba(251, 191, 36, 0.2)";
+        responseBodyEl.textContent = "-";
+        responseHeadersEl.textContent = "-";
+        responseTimeEl.textContent = "";
+
+        const started = performance.now();
+        try {
+          const response = await fetch(url, {
+            method,
+            headers,
+            body: method === "POST" ? body : undefined,
+          });
+          const finished = performance.now();
+          const duration = (finished - started).toFixed(1);
+          responseTimeEl.textContent = `Dauer: ${duration} ms`;
+          statusEl.textContent = `Status: ${response.status} ${response.statusText}`;
+          statusEl.style.background = response.ok
+            ? "rgba(34, 197, 94, 0.18)"
+            : "rgba(248, 113, 113, 0.25)";
+
+          const headerEntries = [];
+          response.headers.forEach((value, key) => {
+            headerEntries.push(`${key}: ${value}`);
+          });
+          responseHeadersEl.textContent = headerEntries.join("\n") || "(Keine Header)";
+
+          const text = await response.text();
+          try {
+            const json = JSON.parse(text);
+            responseBodyEl.textContent = JSON.stringify(json, null, 2);
+          } catch {
+            responseBodyEl.textContent = text || "(Leerer Body)";
+          }
+        } catch (error) {
+          statusEl.textContent = "Request fehlgeschlagen";
+          statusEl.style.background = "rgba(248, 113, 113, 0.25)";
+          responseBodyEl.textContent = error.message;
+          responseTimeEl.textContent = "";
+        } finally {
+          sendBtn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
