@@ -10,6 +10,7 @@ from typing import Any, Mapping
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
@@ -387,6 +388,13 @@ def compute_match_score(
 @router.get("/ping")
 def ping() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@router.options("/match-company")
+def match_company_options() -> Response:
+    """Respond to CORS preflight requests without requiring auth."""
+
+    return Response(status_code=200)
 
 
 @router.post(
