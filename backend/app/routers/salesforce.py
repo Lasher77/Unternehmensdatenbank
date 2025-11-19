@@ -35,14 +35,23 @@ _BASE_COMPANY_SELECT = """
 SELECT
     source_id,
     COALESCE(name_norm, raw_name) AS name,
+    COALESCE(email, data->>'email') AS email,
     street,
     postal_code,
     city,
     country,
     register_id,
     COALESCE(data->>'vat_id', data->>'vatId') AS vat_id,
-    data->>'website' AS website,
-    data->>'phone' AS phone,
+    COALESCE(website, data->>'website') AS website,
+    COALESCE(phone, data->>'phone') AS phone,
+    COALESCE(
+        revenue,
+        CASE
+            WHEN NULLIF(btrim(data->>'revenue'), '') ~ '^[-+]?[0-9]+(\\.[0-9]+)?$'
+            THEN (data->>'revenue')::double precision
+            ELSE NULL
+        END
+    ) AS revenue,
     status
 FROM companies
 """

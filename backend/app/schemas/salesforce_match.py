@@ -39,12 +39,14 @@ class SalesforceMatchRequest(BaseModel):
 class SalesforceMatchedCompany(BaseModel):
     source_id: str
     name: Optional[str] = None
+    email: Optional[str] = None
     street: Optional[str] = None
     postal_code: Optional[str] = None
     city: Optional[str] = None
     country: Optional[str] = None
     website: Optional[str] = None
     phone: Optional[str] = None
+    revenue: Optional[float] = None
     register_id: Optional[str] = None
     vat_id: Optional[str] = None
     status: Optional[str] = None

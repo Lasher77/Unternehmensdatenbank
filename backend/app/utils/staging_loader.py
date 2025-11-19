@@ -175,16 +175,25 @@ def promote_staging(run_id: int) -> None:
             text(
                 """
                 INSERT INTO companies (
-                    source_id, raw_name, legal_form, name_norm, street,
-                    postal_code, city, state, country, lat, lng,
-                    register_id, register_city, register_country,
-                    register_unique_key, status, terminated, data, seen_in_run
+                    source_id, raw_name, legal_form, name_norm, email,
+                    website, phone, revenue, street, postal_code, city, state,
+                    country, lat, lng, register_id, register_city,
+                    register_country, register_unique_key, status, terminated,
+                    data, seen_in_run
                 )
                 SELECT
                     source_id,
                     data->>'raw_name',
                     data->>'legal_form',
                     data->>'name',
+                    NULLIF(btrim(data->>'email'), ''),
+                    NULLIF(btrim(data->>'website'), ''),
+                    NULLIF(btrim(data->>'phone'), ''),
+                    CASE
+                        WHEN NULLIF(btrim(data->>'revenue'), '') ~ '^[-+]?[0-9]+(\\.[0-9]+)?$'
+                        THEN NULLIF(btrim(data->>'revenue'), '')::double precision
+                        ELSE NULL
+                    END,
                     data->>'street',
                     data->>'postal_code',
                     data->>'city',
@@ -222,6 +231,10 @@ def promote_staging(run_id: int) -> None:
                     raw_name = EXCLUDED.raw_name,
                     legal_form = EXCLUDED.legal_form,
                     name_norm = EXCLUDED.name_norm,
+                    email = EXCLUDED.email,
+                    website = EXCLUDED.website,
+                    phone = EXCLUDED.phone,
+                    revenue = EXCLUDED.revenue,
                     street = EXCLUDED.street,
                     postal_code = EXCLUDED.postal_code,
                     city = EXCLUDED.city,

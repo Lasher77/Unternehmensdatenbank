@@ -45,6 +45,10 @@ class Company(BaseModel):
     raw_name: Optional[str] = None
     legal_form: Optional[str] = None
     name: Optional[str] = None
+    email: Optional[str] = None
+    website: Optional[str] = None
+    phone: Optional[str] = None
+    revenue: Optional[float] = None
     street: Optional[str] = None
     postal_code: Optional[str] = None
     city: Optional[str] = None
