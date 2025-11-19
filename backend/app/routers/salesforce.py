@@ -348,9 +348,10 @@ def compute_match_score(
             score += 0.1
             reasons.append(f"name_similarity_{similarity:.2f}")
 
-    if query.city and company_city := _casefold(company_city):
+    if query.city and company_city:
+        company_city_folded = _casefold(company_city)
         query_city = _casefold(query.city)
-        if query_city == company_city:
+        if query_city == company_city_folded:
             if (
                 query.postal_code
                 and company_postal
