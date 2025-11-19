@@ -298,11 +298,22 @@
           <div class="grid-2">
             <label>
               Min Score
-              <input id="optionsMinScore" type="number" min="0" max="1" step="0.05" value="0.5" />
+              <input
+                id="optionsMinScore"
+                type="number"
+                min="0"
+                max="1"
+                step="0.05"
+                value="0.5"
+              />
+              <span class="helper-text"
+                >Wert zwischen 0 und 1, Dezimalstellen mit Punkt oder Komma eingeben.</span
+              >
             </label>
             <label>
               Max. Ergebnisse
               <input id="optionsMaxResults" type="number" min="1" max="50" value="10" />
+              <span class="helper-text">Ganze Zahl zwischen 1 und 50.</span>
             </label>
           </div>
         </fieldset>
@@ -421,6 +432,42 @@
         );
       }
 
+      const numberFieldLabels = {
+        min_score: "Min Score",
+        max_results: "Max. Ergebnisse",
+      };
+
+      function numberParseError(field, message) {
+        const error = new Error("invalid-number");
+        error.code = "invalid-number";
+        const label = numberFieldLabels[field] || field;
+        error.userMessage = `${label}: ${message}`;
+        return error;
+      }
+
+      function parseNumberField(rawValue, { field, min, max, integer = false, allowDecimal = false }) {
+        if (rawValue === undefined || rawValue === "") {
+          return undefined;
+        }
+        let normalized = rawValue.replace(/\s+/g, "");
+        if (allowDecimal) {
+          normalized = normalized.replace(/,/g, ".");
+        }
+        const parsed = Number(normalized);
+        if (Number.isNaN(parsed)) {
+          throw numberParseError(field, "Bitte gib eine gültige Zahl ein.");
+        }
+        if (integer && !Number.isInteger(parsed)) {
+          throw numberParseError(field, "Bitte gib eine ganze Zahl ein.");
+        }
+        if ((typeof min === "number" && parsed < min) || (typeof max === "number" && parsed > max)) {
+          const minText = typeof min === "number" ? min : "-∞";
+          const maxText = typeof max === "number" ? max : "∞";
+          throw numberParseError(field, `Der Wert muss zwischen ${minText} und ${maxText} liegen.`);
+        }
+        return parsed;
+      }
+
       function buildMatchPayload() {
         const context = removeEmpty({
           source: value("contextSource"),
@@ -445,17 +492,23 @@
           max_results: value("optionsMaxResults"),
         };
         const options = {};
-        if (optionsRaw.min_score !== "") {
-          const parsed = Number(optionsRaw.min_score);
-          if (!Number.isNaN(parsed)) {
-            options.min_score = parsed;
-          }
+        const minScore = parseNumberField(optionsRaw.min_score, {
+          field: "min_score",
+          min: 0,
+          max: 1,
+          allowDecimal: true,
+        });
+        if (minScore !== undefined) {
+          options.min_score = minScore;
         }
-        if (optionsRaw.max_results !== "") {
-          const parsed = Number(optionsRaw.max_results);
-          if (!Number.isNaN(parsed)) {
-            options.max_results = parsed;
-          }
+        const maxResults = parseNumberField(optionsRaw.max_results, {
+          field: "max_results",
+          min: 1,
+          max: 50,
+          integer: true,
+        });
+        if (maxResults !== undefined) {
+          options.max_results = maxResults;
         }
 
         const payload = { query };
@@ -484,7 +537,15 @@
             throw error;
           }
         }
-        const payload = buildMatchPayload();
+        let payload;
+        try {
+          payload = buildMatchPayload();
+        } catch (error) {
+          if (!silent && error?.code === "invalid-number" && error.userMessage) {
+            alert(error.userMessage);
+          }
+          throw error;
+        }
         if (!Object.keys(payload.query).length) {
           if (!silent) {
             alert(
@@ -599,7 +660,7 @@
           try {
             body = buildRequestBody();
           } catch (error) {
-            if (error.message !== "missing-query") {
+            if (!["missing-query", "invalid-number"].includes(error.message)) {
               console.error(error);
             }
             return;

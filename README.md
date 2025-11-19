@@ -144,6 +144,10 @@ Lege dazu in deiner `.env` den Wert `SALESFORCE_MATCH_API_TOKEN=<geheimes-token>
 verwende bei Anfragen z. B. `Authorization: Bearer <geheimes-token>`. Ohne konfigurierten Token
 werden die Endpunkte automatisch gesperrt.
 
+Du kannst das HTML-Tool `frontend/public/salesforce-api-tester.html` direkt im Browser öffnen,
+um Anfragen gegen das Match- oder Ping-Endpoint zusammenzuklicken. Das Tool zeigt gleichzeitig
+den fertigen `curl`-Befehl an.
+
 ### OpenSearch über HTTPS
 
 Setze in deiner `.env` die Variable `OPENSEARCH_USE_SSL=true`, wenn dein OpenSearch-Cluster über HTTPS erreichbar ist.
@@ -185,4 +189,21 @@ Export:
 ```bash
 curl -X POST http://localhost:8080/api/exports -H "Content-Type: application/json" \
   -d '{"format":"csv","wz":"62.01","state":"BY"}'
+```
+
+Salesforce Match Endpoint:
+
+```bash
+curl -X POST 'http://localhost:8080/api/salesforce/match-company' \
+  -H 'Authorization: Bearer <dein-token>' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "query": {
+      "name": "Müritz"
+    },
+    "options": {
+      "min_score": 0.5,
+      "max_results": 10
+    }
+  }'
 ```
