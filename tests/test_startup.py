@@ -2,6 +2,7 @@ import pytest
 
 pytest.importorskip("httpx")
 from fastapi.testclient import TestClient
+from opensearchpy.exceptions import ConnectionError as OpenSearchConnectionError
 
 import backend.app.main as main
 from backend.app.main import app
@@ -29,3 +30,21 @@ def test_startup_creates_companies_index(monkeypatch: pytest.MonkeyPatch) -> Non
     with TestClient(app):
         pass
     assert dummy.indices.exists(index="companies")
+
+
+def test_startup_logs_when_opensearch_unavailable(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    dummy = DummyOSClient()
+    monkeypatch.setattr(main, "get_opensearch", lambda: dummy)
+
+    def _raise(_: DummyOSClient) -> None:
+        raise OpenSearchConnectionError("N/A", "boom", Exception("boom"))
+
+    monkeypatch.setattr(main, "ensure_companies_index", _raise)
+
+    with caplog.at_level("WARNING"):
+        with TestClient(app):
+            pass
+
+    assert "Skipping OpenSearch index initialization" in caplog.text

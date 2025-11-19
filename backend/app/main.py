@@ -1,6 +1,9 @@
+import logging
+
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from opensearchpy import OpenSearch
+from opensearchpy.exceptions import ConnectionError as OpenSearchConnectionError
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
@@ -8,6 +11,8 @@ from .config import get_settings
 from .deps import get_db_conn, get_os_client
 from .opensearch_client import ensure_companies_index, get_opensearch
 from .routers import companies, exports, imports, salesforce, search, stats, tasks
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="BVMW Companies API")
 
@@ -33,7 +38,13 @@ app.include_router(tasks.router)
 @app.on_event("startup")
 def startup_event() -> None:
     client = get_opensearch()
-    ensure_companies_index(client)
+    try:
+        ensure_companies_index(client)
+    except OpenSearchConnectionError as exc:  # pragma: no cover - log-only path
+        logger.warning(
+            "Skipping OpenSearch index initialization because the cluster is unavailable: %s",
+            exc,
+        )
 
 
 @app.get("/healthz")
