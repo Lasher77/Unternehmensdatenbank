@@ -16,6 +16,7 @@ services:
     env_file: .env
     command:
       - ./scripts/start_worker.sh
+    # optional: CELERY_CONCURRENCY in .env setzen, z. B. 4 oder 8
     depends_on:
       - db
       - redis
@@ -24,7 +25,10 @@ services:
     volumes:
       - import_tmp:/data/imports
   db:
-    image: postgis/postgis:16-3.4
+    # Bei Wechsel des DB-Images ist ein "docker compose down -v" notwendig,
+    # da postgres:16-alpine nicht binär kompatibel mit dem vorherigen PostGIS-Image ist.
+    image: postgres:16-alpine
+    platform: linux/arm64
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -33,6 +37,8 @@ services:
       - "5432:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
+      - ./config/postgresql.conf:/etc/postgresql/postgresql.conf
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
   redis:
     image: redis:7
     ports:
@@ -41,9 +47,10 @@ services:
       - redis_data:/data
   opensearch:
     image: opensearchproject/opensearch:2.11.1
+    platform: linux/arm64
     environment:
       - discovery.type=single-node
-      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+      - "OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g"
       - plugins.security.disabled=true
     ports:
       - "9200:9200"

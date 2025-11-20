@@ -20,10 +20,12 @@ class Settings(BaseSettings):
     s3_secret_key: str = "minio123"
     s3_bucket: str = "companies"
 
-    # Origins allowed for CORS
-    allowed_origins: list[str] = ["http://localhost:3000"]
+    # Origins allowed for CORS (can be overridden via env var in production)
+    allowed_origins: list[str] = ["*"]
 
     salesforce_match_api_token: str | None = None
+
+    celery_concurrency: int = 4
 
     class Config:
         env_file = ".env"
