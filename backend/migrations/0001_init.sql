@@ -1,7 +1,6 @@
 BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
-CREATE EXTENSION IF NOT EXISTS postgis;
 
 -- Importläufe
 CREATE TABLE IF NOT EXISTS ingestion_run (
@@ -26,7 +25,7 @@ CREATE TABLE IF NOT EXISTS companies (
   country TEXT DEFAULT 'DE',
   lat DOUBLE PRECISION,
   lng DOUBLE PRECISION,
-  geom GEOGRAPHY(POINT),
+  geom POINT,
   register_id TEXT,
   register_city TEXT,
   register_country TEXT,

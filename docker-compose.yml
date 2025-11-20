@@ -27,9 +27,7 @@ services:
   db:
     # Bei Wechsel des DB-Images ist ein "docker compose down -v" notwendig,
     # da postgres:16-alpine nicht binär kompatibel mit dem vorherigen PostGIS-Image ist.
-    # Das PostGIS-Image stellt die für die Migration benötigte Erweiterung bereit.
-    image: postgis/postgis:16-3.4-alpine
-    platform: linux/arm64
+    image: postgres:16-alpine
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}

@@ -43,7 +43,7 @@ gestartet werden.
    docker compose up --build
    ```
 
-   Die Datenbank nutzt ein PostgreSQL-Image mit PostGIS-Erweiterung.
+   Die Datenbank nutzt ein schlankes PostgreSQL 16 Alpine Image.
 
 4. SQL-Migrationen ausführen:
 
