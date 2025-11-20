@@ -2,11 +2,21 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { Search } from 'lucide-react';
+import { Input } from './ui/input';
 
-export default function SearchBar() {
+interface SearchBarProps {
+  size?: 'md' | 'lg';
+}
+
+export default function SearchBar({ size = 'lg' }: SearchBarProps) {
   const router = useRouter();
   const params = useSearchParams();
   const [value, setValue] = useState(params.get('query') ?? '');
+
+  useEffect(() => {
+    setValue(params.get('query') ?? '');
+  }, [params]);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -19,13 +29,18 @@ export default function SearchBar() {
     return () => clearTimeout(t);
   }, [value, router]);
 
+  const inputClasses = size === 'lg' ? 'h-12 text-base' : 'h-10 text-sm';
+
   return (
-    <input
-      aria-label="Search companies"
-      className="w-full max-w-lg px-3 py-2 border rounded-md"
-      placeholder="Search companies..."
-      value={value}
-      onChange={(e) => setValue(e.target.value)}
-    />
+    <div className="relative w-full max-w-2xl">
+      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <Input
+        aria-label="Search companies"
+        className={`${inputClasses} pl-10 shadow-sm`}
+        placeholder="Name, Domain, HRB oder Ort…"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+      />
+    </div>
   );
 }

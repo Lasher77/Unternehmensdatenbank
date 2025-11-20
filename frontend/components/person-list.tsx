@@ -1,27 +1,32 @@
 'use client';
 
 import { Person } from '@/lib/schemas';
+import { Badge } from './ui/badge';
 
 export default function PersonList({ persons }: { persons: Person[] }) {
   if (!persons || persons.length === 0) {
-    return <div>No persons</div>;
+    return <div className="text-sm text-muted-foreground">Keine Personen vorhanden.</div>;
   }
   return (
-    <ul className="list-disc pl-5 space-y-1">
+    <div className="space-y-3">
       {persons.map((p) => (
-        <li key={p.source_person_id}>
-          {[p.first_name, p.last_name].filter(Boolean).join(' ')}
-          {p.roles && p.roles.length > 0 && (
-            <ul className="ml-4 list-disc space-y-1">
+        <div key={p.source_person_id} className="rounded-md border border-muted bg-card p-3 shadow-sm">
+          <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+            {[p.first_name, p.last_name].filter(Boolean).join(' ') || 'Unbekannte Person'}
+          </div>
+          {p.roles && p.roles.length > 0 ? (
+            <div className="mt-2 flex flex-wrap gap-2">
               {p.roles.map((r, idx) => (
-                <li key={idx}>
-                  {[r.role_name, r.role_type, r.role_date].filter(Boolean).join(' - ')}
-                </li>
+                <Badge key={idx} variant="secondary" className="text-xs">
+                  {[r.role_name, r.role_type, r.role_date].filter(Boolean).join(' • ') || 'Rolle' }
+                </Badge>
               ))}
-            </ul>
+            </div>
+          ) : (
+            <p className="mt-1 text-xs text-muted-foreground">Keine Rollen hinterlegt.</p>
           )}
-        </li>
+        </div>
       ))}
-    </ul>
+    </div>
   );
 }

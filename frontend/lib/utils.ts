@@ -1,3 +1,9 @@
+import clsx from "clsx";
+
+export function cn(...classes: Array<string | false | null | undefined>) {
+  return clsx(classes.filter(Boolean));
+}
+
 export function formatBytes(bytes: number, decimals = 1) {
   if (bytes === 0) return "0 B";
   const k = 1024;
