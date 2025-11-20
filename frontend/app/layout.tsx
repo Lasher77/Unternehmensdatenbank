@@ -22,8 +22,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </nav>
           </aside>
           <div className="flex-1 flex flex-col">
-            <header className="p-4 border-b">
-              <SearchBar />
+            <header className="p-4 border-b bg-muted/30">
+              <SearchBar size="md" />
             </header>
             <main className="p-4 flex-1 overflow-auto">{children}</main>
           </div>

@@ -22,6 +22,21 @@ export function useSearchCompanies(request: SearchRequest) {
   });
 }
 
+export function useIndexStats() {
+  return useQuery({
+    queryKey: ["index-stats"],
+    queryFn: async () => {
+      const { data } = await api.get<TableCountsResponse>("/api/stats/table-counts");
+      const tableMap = Object.fromEntries(data.counts.map((item) => [item.table, item.rows]));
+      return {
+        counts: data.counts,
+        companies: tableMap["companies"] ?? tableMap["staging_companies"],
+        events: tableMap["events"] ?? tableMap["staging_events"],
+      };
+    }
+  });
+}
+
 export function useCompanyDetail(id: string) {
   return useQuery<CompanyDetailResponse>({
     queryKey: ["company", id],

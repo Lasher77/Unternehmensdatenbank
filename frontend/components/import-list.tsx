@@ -24,6 +24,9 @@ export type ImportItem = {
   summary?: Record<string, number>;
   summaryStatus: SummaryStatus;
   summaryError?: string;
+  label: string;
+  createdAt: string;
+  startedAt?: string;
 };
 
 interface Props {
@@ -71,7 +74,10 @@ export default function ImportList({ label, items, setItems }: Props) {
                     summary: undefined,
                     summaryStatus: 'loading',
                     summaryError: undefined,
-                    finishedAt: typeof info?.finished_at === 'string' ? info.finished_at : undefined,
+                    finishedAt:
+                      typeof info?.finished_at === 'string'
+                        ? info.finished_at
+                        : i.finishedAt ?? new Date().toISOString(),
                   };
                 }
                 toast.error('Die Run-ID des Imports konnte nicht ermittelt werden.');
@@ -102,15 +108,19 @@ export default function ImportList({ label, items, setItems }: Props) {
 
   useEffect(() => {
     if (uploadingRef.current) return;
-    if (!label) return;
 
     const next = items.find((i) => i.status === 'ready');
     if (!next) return;
+
+    const effectiveLabel = next.label || label;
+    if (!effectiveLabel) return;
 
     uploadingRef.current = true;
 
     async function process() {
       try {
+        const startedAt = new Date().toISOString();
+
         setItems((arr) =>
           arr.map((i) =>
             i.id === next.id
@@ -123,12 +133,13 @@ export default function ImportList({ label, items, setItems }: Props) {
                   summaryStatus: 'idle',
                   summaryError: undefined,
                   finishedAt: undefined,
+                  startedAt,
                 }
               : i
           )
         );
         const res = await createImport.mutateAsync({
-          label,
+          label: effectiveLabel,
           file: next.file,
           onUploadProgress: (e) => {
             const prog = e.total ? Math.round((e.loaded / e.total) * 100) : 0;
@@ -186,6 +197,7 @@ export default function ImportList({ label, items, setItems }: Props) {
               summaryError: undefined,
               runId: undefined,
               finishedAt: undefined,
+              startedAt: undefined,
             }
           : i
       )
