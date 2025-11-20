@@ -344,7 +344,14 @@ def compute_match_score(
             reasons.append("domain_sld_match")
 
     if query.name_norm and company_name_norm:
-        similarity = SequenceMatcher(None, query.name_norm, company_name_norm).ratio()
+        q_name = query.name_norm
+        c_name = company_name_norm
+
+        if q_name in c_name:
+            score += 0.3
+            reasons.append("name_substring_match")
+
+        similarity = SequenceMatcher(None, q_name, c_name).ratio()
         if similarity >= 0.9:
             score += 0.4
             reasons.append(f"name_similarity_{similarity:.2f}")
@@ -357,6 +364,11 @@ def compute_match_score(
         elif similarity >= 0.6:
             score += 0.1
             reasons.append(f"name_similarity_{similarity:.2f}")
+
+    if query.postal_code and company_postal:
+        if query.postal_code == company_postal:
+            score += 0.15
+            reasons.append("same_postal_code")
 
     if query.city and company_city:
         company_city_folded = _casefold(company_city)
@@ -423,7 +435,7 @@ def match_company(
     normalized = _normalize_query_model(request)
     candidates = _collect_candidates(db, normalized)
 
-    min_score = request.options.min_score if request.options else 0.5
+    min_score = request.options.min_score if request.options else 0.4
     max_results = request.options.max_results if request.options else 10
     max_results = min(max_results, MAX_CANDIDATES)
 
