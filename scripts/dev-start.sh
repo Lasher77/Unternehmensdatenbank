@@ -18,12 +18,17 @@ docker compose build backend
 docker compose up -d --build db redis opensearch minio
 
 # Wait for Postgres
-until docker compose exec db pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null 2>&1; do
+until docker compose exec -T db pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null 2>&1; do
   sleep 1
 done
 
 # Wait for OpenSearch
 until curl -sSf http://localhost:9200 >/dev/null 2>&1; do
+  sleep 1
+done
+
+# Wait for MinIO
+until curl -sSf http://localhost:9000/minio/health/live >/dev/null 2>&1; do
   sleep 1
 done
 
