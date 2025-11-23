@@ -30,90 +30,100 @@ class FakeResult:
         return list(self._rows)
 
 
-class FakeConnection:
-    def __init__(self) -> None:
-        self.updated_params: dict[str, Any] | None = None
+def test_run_import_ignores_duplicate_source_ids(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    data_path = tmp_path / "duplicates.ndjson"
+    data_path.write_text("\n".join(json.dumps({"id": "dup-1", "name": name}) for name in ["A", "B"]))
 
-    def execute(self, statement: Any, params: dict[str, Any] | None = None) -> FakeResult:
-        sql = getattr(statement, "text", str(statement))
-        params = params or {}
+    class FakeResult:
+        def __init__(self, *, value: Any | None = None, rows: list[dict[str, Any]] | None = None):
+            self._value = value
+            self._rows = rows or []
 
-        if "name_norm AS name" in sql:
-            return FakeResult(rows=[{"source_id": "src-1", "name": "Example"}])
+        def scalar_one(self) -> Any:
+            return self._value
 
-        if "COUNT(*) FROM companies" in sql:
-            return FakeResult(value=3)
-        if "COUNT(*) FROM events" in sql:
-            return FakeResult(value=4)
-        if "COUNT(*) FROM company_person_roles" in sql:
-            return FakeResult(value=5)
-        if "COUNT(*) FROM company_industries" in sql:
-            return FakeResult(value=6)
-        if "COUNT(*) FROM company_relations" in sql:
-            return FakeResult(value=7)
-        if "COUNT(*) FROM company_history" in sql:
-            return FakeResult(value=8)
+        def mappings(self) -> "FakeResult":
+            return self
 
-        if "UPDATE ingestion_run" in sql:
-            self.updated_params = dict(params)
-            return FakeResult()
+        def all(self) -> list[dict[str, Any]]:
+            return list(self._rows)
 
-        raise AssertionError(f"Unexpected SQL: {sql}")
+    class FakeConnection:
+        def __init__(self) -> None:
+            self.summary: str | None = None
 
+        def __enter__(self) -> "FakeConnection":
+            return self
 
-class FakeConnectionContext:
-    def __init__(self, connection: FakeConnection) -> None:
-        self._connection = connection
+        def __exit__(self, exc_type, exc, tb) -> bool:  # type: ignore[override]
+            return False
 
-    def __enter__(self) -> FakeConnection:
-        return self._connection
+        def execute(self, statement: Any, params: dict[str, Any] | None = None) -> FakeResult:
+            sql = getattr(statement, "text", str(statement))
+            params = params or {}
 
-    def __exit__(self, exc_type, exc, tb) -> bool:  # type: ignore[override]
-        return False
+            if "INSERT INTO ingestion_run" in sql:
+                return FakeResult(value=1)
 
+            if "FROM companies" in sql:
+                source_id = params["source_ids"][0]
+                return FakeResult(
+                    rows=[
+                        {
+                            "source_id": source_id,
+                            "name": "Example",
+                            "state": None,
+                            "city": None,
+                            "postal_code": None,
+                            "status": None,
+                            "legal_form": None,
+                            "lat": None,
+                            "lng": None,
+                        }
+                    ]
+                )
 
-class FakeEngine:
-    def __init__(self, connection: FakeConnection) -> None:
-        self._connection = connection
+            if "UPDATE ingestion_run" in sql:
+                self.summary = params.get("summary")
+                return FakeResult()
 
-    def begin(self) -> FakeConnectionContext:
-        return FakeConnectionContext(self._connection)
+            raise AssertionError(f"Unexpected SQL: {sql}")
 
+        def commit(self) -> None:
+            return None
 
-def test_finalize_import_collects_summary(monkeypatch: pytest.MonkeyPatch) -> None:
-    connection = FakeConnection()
-    engine = FakeEngine(connection)
+        def begin(self) -> "FakeConnection":
+            return self
 
-    monkeypatch.setattr(tasks_import, "engine", engine)
+    class FakeEngine:
+        def __init__(self) -> None:
+            self.connection = FakeConnection()
+            self.update_connection = FakeConnection()
 
-    promoted: dict[str, Any] = {}
-    monkeypatch.setattr(tasks_import, "promote_staging", lambda run_id: promoted.setdefault("run_id", run_id))
+        def connect(self) -> FakeConnection:
+            return self.connection
 
-    indexed: dict[str, Any] = {}
+        def begin(self) -> FakeConnection:
+            return self.update_connection
+
+    upserts: list[str] = []
+
+    monkeypatch.setattr(tasks_import, "engine", FakeEngine())
+    monkeypatch.setattr(
+        tasks_import,
+        "map_company_payload",
+        lambda obj: {"source_id": obj["id"], "raw_name": obj.get("name", ""), "data": obj},
+    )
+    monkeypatch.setattr(tasks_import, "_upsert_company", lambda conn, company, run_id: upserts.append(company["source_id"]))
     monkeypatch.setattr(tasks_import, "get_opensearch", lambda: object())
-    monkeypatch.setattr(tasks_import, "ensure_companies_index", lambda client: indexed.setdefault("ensured", True))
-    monkeypatch.setattr(tasks_import, "index_companies", lambda client, rows: indexed.setdefault("rows", list(rows)))
+    monkeypatch.setattr(tasks_import, "ensure_companies_index", lambda client: None)
+    monkeypatch.setattr(tasks_import, "index_companies", lambda client, companies: None)
+    monkeypatch.setattr(tasks_import.run_import, "update_state", lambda *args, **kwargs: None)
 
-    start = datetime.now(timezone.utc)
-    result = tasks_import.finalize_import.run({"s3_key": "file.ndjson", "run_id": 42})
+    result = tasks_import.run_import.run(str(data_path), None)
 
-    assert promoted["run_id"] == 42
-    assert indexed["ensured"] is True
-    assert indexed["rows"] == [{"source_id": "src-1", "name": "Example"}]
-
-    assert result["run_id"] == 42
-    assert result["summary"] == {
-        "companies": 3,
-        "events": 4,
-        "company_person_roles": 5,
-        "company_industries": 6,
-        "company_relations": 7,
-        "company_history": 8,
-    }
-
-    finished_at = datetime.fromisoformat(result["finished_at"])
-    assert finished_at >= start
-
-    assert connection.updated_params is not None
-    assert connection.updated_params["run_id"] == 42
-    assert json.loads(connection.updated_params["summary"]) == result["summary"]
+    assert result["successful_records"] == 1
+    assert result["error_records"] == 0
+    assert result["total_records"] == 2
+    assert upserts == ["dup-1"]
+    assert json.loads(tasks_import.engine.update_connection.summary or "{}") == {"companies": 1, "errors": 0}
