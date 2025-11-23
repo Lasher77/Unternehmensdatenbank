@@ -300,69 +300,111 @@ def run_import(self, s3_key: str, label: str | None = None) -> ImportRunResult:
                     continue
 
                 processed += 1
+                source_id: str | None = None
                 try:
-                    obj = json.loads(raw_line)
-                except JSONDecodeError as exc:
-                    error_records += 1
-                    errors.append(
-                        IngestionError(
-                            run_id=run_id,
-                            source_id=None,
-                            line_number=line_number,
-                            file_name=file_name,
-                            error_code="JSON_PARSE_ERROR",
-                            error_message=str(exc),
-                            raw_excerpt=raw_line[:500],
+                    try:
+                        obj = json.loads(raw_line)
+                    except JSONDecodeError as exc:
+                        error_records += 1
+                        errors.append(
+                            IngestionError(
+                                run_id=run_id,
+                                source_id=None,
+                                line_number=line_number,
+                                file_name=file_name,
+                                error_code="JSON_PARSE_ERROR",
+                                error_message=str(exc),
+                                raw_excerpt=raw_line[:500],
+                            )
                         )
-                    )
-                    if len(errors) >= BATCH_ERROR_SIZE:
-                        with conn.begin():
-                            _insert_errors(conn, errors)
-                        errors = []
-                    continue
+                        if len(errors) >= BATCH_ERROR_SIZE:
+                            with conn.begin():
+                                _insert_errors(conn, errors)
+                            errors = []
+                        continue
 
-                try:
-                    source_id = extract_source_id(obj)
-                except ValueError:
-                    error_records += 1
-                    errors.append(
-                        IngestionError(
-                            run_id=run_id,
-                            source_id=None,
-                            line_number=line_number,
-                            file_name=file_name,
-                            error_code="MISSING_SOURCE_ID",
-                            error_message="Datensatz ohne source_id", 
-                            raw_excerpt=raw_line[:500],
+                    try:
+                        source_id = extract_source_id(obj)
+                    except ValueError:
+                        error_records += 1
+                        errors.append(
+                            IngestionError(
+                                run_id=run_id,
+                                source_id=None,
+                                line_number=line_number,
+                                file_name=file_name,
+                                error_code="MISSING_SOURCE_ID",
+                                error_message="Datensatz ohne source_id",
+                                raw_excerpt=raw_line[:500],
+                            )
                         )
-                    )
-                    if len(errors) >= BATCH_ERROR_SIZE:
-                        with conn.begin():
-                            _insert_errors(conn, errors)
-                        errors = []
-                    continue
+                        if len(errors) >= BATCH_ERROR_SIZE:
+                            with conn.begin():
+                                _insert_errors(conn, errors)
+                            errors = []
+                        continue
 
-                if source_id in seen_source_ids:
-                    error_records += 1
-                    errors.append(
-                        IngestionError(
-                            run_id=run_id,
-                            source_id=source_id,
-                            line_number=line_number,
-                            file_name=file_name,
-                            error_code="DUPLICATE_SOURCE_ID_IN_RUN",
-                            error_message="source_id bereits im Importlauf verarbeitet",
-                            raw_excerpt=raw_line[:500],
+                    if source_id in seen_source_ids:
+                        error_records += 1
+                        errors.append(
+                            IngestionError(
+                                run_id=run_id,
+                                source_id=source_id,
+                                line_number=line_number,
+                                file_name=file_name,
+                                error_code="DUPLICATE_SOURCE_ID_IN_RUN",
+                                error_message="source_id bereits im Importlauf verarbeitet",
+                                raw_excerpt=raw_line[:500],
+                            )
                         )
-                    )
-                    if len(errors) >= BATCH_ERROR_SIZE:
-                        with conn.begin():
-                            _insert_errors(conn, errors)
-                        errors = []
-                    continue
+                        if len(errors) >= BATCH_ERROR_SIZE:
+                            with conn.begin():
+                                _insert_errors(conn, errors)
+                            errors = []
+                        continue
 
-                try:
-                    company_payload = map_company_payload(obj)
+                    try:
+                        company_payload = map_company_payload(obj)
+                    except Exception as exc:  # noqa: BLE001
+                        error_records += 1
+                        errors.append(
+                            IngestionError(
+                                run_id=run_id,
+                                source_id=source_id,
+                                line_number=line_number,
+                                file_name=file_name,
+                                error_code="MAPPING_ERROR",
+                                error_message=str(exc),
+                                raw_excerpt=raw_line[:500],
+                            )
+                        )
+                        if len(errors) >= BATCH_ERROR_SIZE:
+                            with conn.begin():
+                                _insert_errors(conn, errors)
+                            errors = []
+                        continue
+
+                    try:
+                        with conn.begin():
+                            _upsert_company(conn, company_payload, run_id)
+                    except SQLAlchemyError as exc:
+                        error_records += 1
+                        errors.append(
+                            IngestionError(
+                                run_id=run_id,
+                                source_id=source_id,
+                                line_number=line_number,
+                                file_name=file_name,
+                                error_code="UPSERT_ERROR",
+                                error_message=str(exc.orig) if hasattr(exc, "orig") else str(exc),
+                                raw_excerpt=raw_line[:500],
+                            )
+                        )
+                        if len(errors) >= BATCH_ERROR_SIZE:
+                            with conn.begin():
+                                _insert_errors(conn, errors)
+                            errors = []
+                        continue
                 except Exception as exc:  # noqa: BLE001
                     error_records += 1
                     errors.append(
@@ -371,30 +413,8 @@ def run_import(self, s3_key: str, label: str | None = None) -> ImportRunResult:
                             source_id=source_id,
                             line_number=line_number,
                             file_name=file_name,
-                            error_code="MAPPING_ERROR",
+                            error_code="UNEXPECTED_ERROR",
                             error_message=str(exc),
-                            raw_excerpt=raw_line[:500],
-                        )
-                    )
-                    if len(errors) >= BATCH_ERROR_SIZE:
-                        with conn.begin():
-                            _insert_errors(conn, errors)
-                        errors = []
-                    continue
-
-                try:
-                    with conn.begin():
-                        _upsert_company(conn, company_payload, run_id)
-                except SQLAlchemyError as exc:
-                    error_records += 1
-                    errors.append(
-                        IngestionError(
-                            run_id=run_id,
-                            source_id=source_id,
-                            line_number=line_number,
-                            file_name=file_name,
-                            error_code="UPSERT_ERROR",
-                            error_message=str(exc.orig) if hasattr(exc, "orig") else str(exc),
                             raw_excerpt=raw_line[:500],
                         )
                     )
