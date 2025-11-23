@@ -345,22 +345,9 @@ def run_import(self, s3_key: str, label: str | None = None) -> ImportRunResult:
                         continue
 
                     if source_id in seen_source_ids:
-                        error_records += 1
-                        errors.append(
-                            IngestionError(
-                                run_id=run_id,
-                                source_id=source_id,
-                                line_number=line_number,
-                                file_name=file_name,
-                                error_code="DUPLICATE_SOURCE_ID_IN_RUN",
-                                error_message="source_id bereits im Importlauf verarbeitet",
-                                raw_excerpt=raw_line[:500],
-                            )
-                        )
-                        if len(errors) >= BATCH_ERROR_SIZE:
-                            with conn.begin():
-                                _insert_errors(conn, errors)
-                            errors = []
+                        # Ignore duplicate source IDs within the same import run to keep
+                        # processing the remaining entries without raising ingestion
+                        # errors for repeated records.
                         continue
 
                     try:
