@@ -2,13 +2,19 @@ import json
 from fastapi import APIRouter, Form, HTTPException, UploadFile
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from typing import Any
 
 from sqlalchemy import text
 
 from ..db import engine
 from ..workers.tasks_import import cleanup_import_file, run_import
 
-from ..schemas.import_ import ImportResponse, ImportSummaryResponse
+from ..schemas.import_ import (
+    ImportErrorEntry,
+    ImportErrorListResponse,
+    ImportResponse,
+    ImportSummaryResponse,
+)
 
 router = APIRouter(prefix="/api/imports", tags=["imports"])
 
@@ -53,20 +59,7 @@ async def create_import(
 @router.get("/{run_id}", response_model=ImportSummaryResponse)
 def get_import_summary(run_id: int) -> ImportSummaryResponse:
     with engine.begin() as conn:
-        row = (
-            conn.execute(
-                text(
-                    """
-                    SELECT run_id, finished_at, summary
-                    FROM ingestion_run
-                    WHERE run_id = :run_id
-                    """
-                ),
-                {"run_id": run_id},
-            )
-            .mappings()
-            .first()
-        )
+        row = _get_import_run(conn, run_id)
 
     if row is None:
         raise HTTPException(status_code=404, detail="Import run not found")
@@ -86,4 +79,77 @@ def get_import_summary(run_id: int) -> ImportSummaryResponse:
         summary=summary,
         finished=finished_at is not None,
         finished_at=finished_at,
+    )
+
+
+def _get_import_run(conn: Any, run_id: int) -> dict[str, Any] | None:
+    return (
+        conn.execute(
+            text(
+                """
+                SELECT run_id, finished_at, summary
+                FROM ingestion_run
+                WHERE run_id = :run_id
+                """
+            ),
+            {"run_id": run_id},
+        )
+        .mappings()
+        .first()
+    )
+
+
+@router.get("/{run_id}/errors", response_model=ImportErrorListResponse)
+def list_import_errors(run_id: int, offset: int = 0, limit: int = 100) -> ImportErrorListResponse:
+    offset = max(0, offset)
+    limit = max(1, min(limit, 1000))
+
+    with engine.begin() as conn:
+        run_row = _get_import_run(conn, run_id)
+
+        if run_row is None:
+            raise HTTPException(status_code=404, detail="Import run not found")
+
+        total = conn.execute(
+            text(
+                """
+                SELECT COUNT(*)
+                FROM ingestion_errors
+                WHERE run_id = :run_id
+                """
+            ),
+            {"run_id": run_id},
+        ).scalar_one()
+
+        rows = (
+            conn.execute(
+                text(
+                    """
+                    SELECT
+                        run_id,
+                        source_id,
+                        line_number,
+                        file_name,
+                        error_code,
+                        error_message,
+                        raw_excerpt
+                    FROM ingestion_errors
+                    WHERE run_id = :run_id
+                    ORDER BY line_number
+                    OFFSET :offset
+                    LIMIT :limit
+                    """
+                ),
+                {"run_id": run_id, "offset": offset, "limit": limit},
+            )
+            .mappings()
+            .all()
+        )
+
+    return ImportErrorListResponse(
+        run_id=run_id,
+        total=total,
+        offset=offset,
+        limit=limit,
+        errors=[ImportErrorEntry(**row) for row in rows],
     )
