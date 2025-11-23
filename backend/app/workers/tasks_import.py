@@ -283,6 +283,10 @@ def run_import(self, s3_key: str, label: str | None = None) -> ImportRunResult:
                 {"src": "file", "notes": file_name},
             ).scalar_one()
 
+            # Close the implicit transaction opened by the INSERT above to avoid
+            # conflicts with explicit transaction blocks later in the process.
+            conn.commit()
+
             errors: list[IngestionError] = []
             seen_source_ids: set[str] = set()
             successful_source_ids: list[str] = []
