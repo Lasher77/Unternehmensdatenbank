@@ -259,7 +259,7 @@ def run_import(self, s3_key: str, label: str | None = None) -> ImportRunResult:
         total_entries = sum(1 for line in fh if line.strip())
         fh.seek(0)
 
-        with engine.connect() as conn:
+        with engine.begin() as conn:
             run_id = conn.execute(
                 text(
                     "INSERT INTO ingestion_run (source, notes) VALUES (:src, :notes) "
@@ -268,19 +268,16 @@ def run_import(self, s3_key: str, label: str | None = None) -> ImportRunResult:
                 {"src": "file", "notes": file_name},
             ).scalar_one()
 
-            # Close the implicit transaction opened by the INSERT above to avoid
-            # conflicts with explicit transaction blocks later in the process.
-            conn.commit()
+        logger.info("Started import run", extra={"run_id": run_id, "file": file_name, "total": total_entries})
 
-            logger.info("Started import run", extra={"run_id": run_id, "file": file_name, "total": total_entries})
+        errors: list[IngestionError] = []
+        seen_source_ids: set[str] = set()
+        successful_source_ids: list[str] = []
+        processed = 0
+        successful_records = 0
+        error_records = 0
 
-            errors: list[IngestionError] = []
-            seen_source_ids: set[str] = set()
-            successful_source_ids: list[str] = []
-            processed = 0
-            successful_records = 0
-            error_records = 0
-
+        with engine.connect() as conn:
             for line_number, line in enumerate(fh, start=1):
                 raw_line = line.strip()
                 if not raw_line:
