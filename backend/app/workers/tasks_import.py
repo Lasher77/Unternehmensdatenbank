@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from json import JSONDecodeError
@@ -20,6 +21,8 @@ from ..schemas.company import _normalize_optional_bool
 from ..utils.country_normalization import normalize_country_code
 
 BATCH_ERROR_SIZE = 100
+
+logger = logging.getLogger(__name__)
 
 
 metadata = MetaData()
@@ -269,6 +272,8 @@ def run_import(self, s3_key: str, label: str | None = None) -> ImportRunResult:
             # conflicts with explicit transaction blocks later in the process.
             conn.commit()
 
+            logger.info("Started import run", extra={"run_id": run_id, "file": file_name, "total": total_entries})
+
             errors: list[IngestionError] = []
             seen_source_ids: set[str] = set()
             successful_source_ids: list[str] = []
@@ -467,6 +472,17 @@ def run_import(self, s3_key: str, label: str | None = None) -> ImportRunResult:
                 "run_id": run_id,
             },
         )
+
+    logger.info(
+        "Finished import run",
+        extra={
+            "run_id": run_id,
+            "file": file_name,
+            "processed": processed,
+            "successful": successful_records,
+            "errors": error_records,
+        },
+    )
 
     return {
         "status": "completed",
