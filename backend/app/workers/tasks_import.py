@@ -9,8 +9,9 @@ from json import JSONDecodeError
 from pathlib import Path
 from typing import Any, TypedDict, Union
 
-from sqlalchemy import text
+from sqlalchemy import MetaData, Table, func, text
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.dialects.postgresql import insert
 
 from .celery_app import celery_app
 from ..db import engine
@@ -19,6 +20,10 @@ from ..schemas.company import _normalize_optional_bool
 from ..utils.country_normalization import normalize_country_code
 
 BATCH_ERROR_SIZE = 100
+
+
+metadata = MetaData()
+companies_table = Table("companies", metadata, autoload_with=engine)
 
 
 @dataclass
@@ -183,88 +188,65 @@ def _insert_errors(conn, errors: list[IngestionError]) -> None:
 
 
 def _upsert_company(conn, company: dict[str, Any], run_id: int) -> None:
-    conn.execute(
-        text(
-            """
-            INSERT INTO companies (
-                source_id,
-                raw_name,
-                legal_form,
-                name_norm,
-                street,
-                postal_code,
-                city,
-                state,
-                country,
-                lat,
-                lng,
-                register_id,
-                register_city,
-                register_country,
-                register_unique_key,
-                status,
-                terminated,
-                data,
-                seen_in_run,
-                email,
-                website,
-                phone,
-                revenue,
-                updated_at
-            ) VALUES (
-                :source_id,
-                :raw_name,
-                :legal_form,
-                :name_norm,
-                :street,
-                :postal_code,
-                :city,
-                :state,
-                COALESCE(:country, 'DE'),
-                :lat,
-                :lng,
-                :register_id,
-                :register_city,
-                :register_country,
-                :register_unique_key,
-                :status,
-                :terminated,
-                :data::jsonb,
-                :run_id,
-                NULLIF(btrim(:email), ''),
-                NULLIF(btrim(:website), ''),
-                NULLIF(btrim(:phone), ''),
-                :revenue,
-                now()
-            )
-            ON CONFLICT (source_id) DO UPDATE SET
-                raw_name = EXCLUDED.raw_name,
-                legal_form = EXCLUDED.legal_form,
-                name_norm = EXCLUDED.name_norm,
-                street = EXCLUDED.street,
-                postal_code = EXCLUDED.postal_code,
-                city = EXCLUDED.city,
-                state = EXCLUDED.state,
-                country = EXCLUDED.country,
-                lat = EXCLUDED.lat,
-                lng = EXCLUDED.lng,
-                register_id = EXCLUDED.register_id,
-                register_city = EXCLUDED.register_city,
-                register_country = EXCLUDED.register_country,
-                register_unique_key = EXCLUDED.register_unique_key,
-                status = EXCLUDED.status,
-                terminated = EXCLUDED.terminated,
-                data = EXCLUDED.data,
-                seen_in_run = EXCLUDED.seen_in_run,
-                email = EXCLUDED.email,
-                website = EXCLUDED.website,
-                phone = EXCLUDED.phone,
-                revenue = EXCLUDED.revenue,
-                updated_at = now()
-            """
-        ),
-        {**company, "run_id": run_id},
+    stmt = (
+        insert(companies_table)
+        .values(
+            source_id=company["source_id"],
+            raw_name=company.get("raw_name"),
+            legal_form=company.get("legal_form"),
+            name_norm=company.get("name_norm"),
+            street=company.get("street"),
+            postal_code=company.get("postal_code"),
+            city=company.get("city"),
+            state=company.get("state"),
+            country=company.get("country") or "DE",
+            lat=company.get("lat"),
+            lng=company.get("lng"),
+            register_id=company.get("register_id"),
+            register_city=company.get("register_city"),
+            register_country=company.get("register_country"),
+            register_unique_key=company.get("register_unique_key"),
+            status=company.get("status"),
+            terminated=company.get("terminated"),
+            data=company.get("data"),
+            seen_in_run=run_id,
+            email=(company.get("email") or "").strip() or None,
+            website=(company.get("website") or "").strip() or None,
+            phone=(company.get("phone") or "").strip() or None,
+            revenue=company.get("revenue"),
+            updated_at=func.now(),
+        )
+        .on_conflict_do_update(
+            index_elements=[companies_table.c.source_id],
+            set_={
+                "raw_name": stmt.excluded.raw_name,
+                "legal_form": stmt.excluded.legal_form,
+                "name_norm": stmt.excluded.name_norm,
+                "street": stmt.excluded.street,
+                "postal_code": stmt.excluded.postal_code,
+                "city": stmt.excluded.city,
+                "state": stmt.excluded.state,
+                "country": stmt.excluded.country,
+                "lat": stmt.excluded.lat,
+                "lng": stmt.excluded.lng,
+                "register_id": stmt.excluded.register_id,
+                "register_city": stmt.excluded.register_city,
+                "register_country": stmt.excluded.register_country,
+                "register_unique_key": stmt.excluded.register_unique_key,
+                "status": stmt.excluded.status,
+                "terminated": stmt.excluded.terminated,
+                "data": stmt.excluded.data,
+                "seen_in_run": stmt.excluded.seen_in_run,
+                "email": stmt.excluded.email,
+                "website": stmt.excluded.website,
+                "phone": stmt.excluded.phone,
+                "revenue": stmt.excluded.revenue,
+                "updated_at": func.now(),
+            },
+        )
     )
+
+    conn.execute(stmt)
 
 
 @celery_app.task(bind=True)
