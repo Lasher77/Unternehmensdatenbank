@@ -47,6 +47,7 @@ class NormalizedQuery:
     postal_code: str | None = None
     city: str | None = None
     city_normalized: str | None = None
+    country: str | None = None
     domain_normalized: str | None = None
     website: str | None = None
 
@@ -60,6 +61,7 @@ def _clean_str(value: str | None) -> str | None:
 
 def _normalize_query_model(match_request: SalesforceMatchRequest) -> NormalizedQuery:
     q = match_request.query
+    country_clean = _clean_str(q.country)
     return NormalizedQuery(
         name=_clean_str(q.name),
         name_normalized=normalize_company_name(q.name),
@@ -68,6 +70,7 @@ def _normalize_query_model(match_request: SalesforceMatchRequest) -> NormalizedQ
         postal_code=normalize_postal_code(_clean_str(q.postal_code)),
         city=_clean_str(q.city),
         city_normalized=normalize_city(q.city),
+        country=country_clean.upper() if country_clean else None,
         domain_normalized=normalize_domain(q.website),
         website=_clean_str(q.website),
     )
@@ -97,6 +100,12 @@ def _address_should(normalized: NormalizedQuery) -> list[dict[str, Any]]:
             {"term": {"street_normalized": {"value": normalized.street_normalized, "boost": 1.5}}}
         )
     return should
+
+
+def _country_filter(normalized: NormalizedQuery) -> list[dict[str, Any]]:
+    if not normalized.country:
+        return []
+    return [{"term": {"country": normalized.country}}]
 
 
 def _run_search(client: OpenSearch, body: dict[str, Any]) -> list[Mapping[str, Any]]:
@@ -166,9 +175,15 @@ def _stage_domain_match(
 ) -> tuple[list[Mapping[str, Any]], str | None]:
     if not normalized.domain_normalized:
         return [], None
+    filters = _country_filter(normalized)
     base_query = {
         "size": size,
-        "query": {"term": {"domain_normalized": normalized.domain_normalized}},
+        "query": {
+            "bool": {
+                "must": [{"term": {"domain_normalized": normalized.domain_normalized}}],
+                "filter": filters,
+            }
+        }
     }
     hits = _run_search(client, base_query)
     if len(hits) <= 1:
@@ -195,6 +210,7 @@ def _stage_domain_match(
             "bool": {
                 "must": must,
                 "should": should,
+                "filter": filters,
                 "minimum_should_match": 1 if should else 0,
             }
         },
@@ -208,6 +224,7 @@ def _stage_name_address(
 ) -> list[Mapping[str, Any]]:
     if not normalized.name_normalized:
         return []
+    filters = _country_filter(normalized)
     query = {
         "size": size,
         "query": {
@@ -224,6 +241,7 @@ def _stage_name_address(
                     }
                 ],
                 "should": _address_should(normalized),
+                "filter": filters,
                 "minimum_should_match": 0,
             }
         },
@@ -234,15 +252,25 @@ def _stage_name_address(
 def _stage_name_strict(client: OpenSearch, normalized: NormalizedQuery, size: int) -> list[Mapping[str, Any]]:
     if not normalized.name_normalized:
         return []
+    filters = _country_filter(normalized)
     query = {
         "size": size,
         "query": {
-            "match": {
-                "name_normalized": {
-                    "query": normalized.name_normalized,
-                    "operator": "and",
-                    "fuzziness": 0,
-                }
+            "bool": {
+                "must": [
+                    {
+                        "match": {
+                            "name_normalized": {
+                                "query": normalized.name_normalized,
+                                "operator": "and",
+                                "fuzziness": 0,
+                            }
+                        }
+                    }
+                ],
+                "should": _address_should(normalized),
+                "filter": filters,
+                "minimum_should_match": 0,
             }
         },
     }
@@ -254,6 +282,7 @@ def _stage_name_fuzzy(
 ) -> list[Mapping[str, Any]]:
     if not normalized.name_normalized:
         return []
+    filters = _country_filter(normalized)
     query = {
         "size": size,
         "query": {
@@ -271,6 +300,7 @@ def _stage_name_fuzzy(
                     }
                 ],
                 "should": _address_should(normalized),
+                "filter": filters,
                 "minimum_should_match": 0,
             }
         },
