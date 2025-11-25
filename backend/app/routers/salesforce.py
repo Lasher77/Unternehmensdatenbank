@@ -14,6 +14,7 @@ from ..deps import get_os_client
 from ..dependencies.auth import require_salesforce_bearer_token
 from ..schemas.salesforce_match import (
     SalesforceMatchItem,
+    SalesforceMatchOptions,
     SalesforceMatchRequest,
     SalesforceMatchResponse,
     SalesforceMatchedCompany,
@@ -359,9 +360,9 @@ def match_company(
         )
 
     normalized = _normalize_query_model(request)
-    max_results = request.options.max_results if request.options else MAX_RESULTS
-    min_score = request.options.min_score if request.options else 0.5
-    max_results = min(max_results, MAX_RESULTS)
+    options = request.options or SalesforceMatchOptions()
+    max_results = min(options.max_results, MAX_RESULTS)
+    min_score = options.min_score
 
     match_level = "NO_MATCH"
     address_match = False

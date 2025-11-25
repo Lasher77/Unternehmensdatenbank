@@ -27,7 +27,7 @@ class SalesforceMatchQuery(BaseModel):
 
 class SalesforceMatchOptions(BaseModel):
     max_results: int = Field(default=10, ge=1, le=50)
-    min_score: float = Field(default=0.5, ge=0, le=1)
+    min_score: float = Field(default=0.0, ge=0, le=1)
 
 
 class SalesforceMatchRequest(BaseModel):
