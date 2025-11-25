@@ -79,6 +79,6 @@ def normalize_domain(value: Optional[str]) -> Optional[str]:
         candidate = f"http://{candidate}"
     parsed = urlparse(candidate)
     domain = parsed.netloc or parsed.path
-    domain = domain.lstrip("www.")
+    domain = domain.removeprefix("www.")
     domain = domain.rstrip("/")
     return domain or None
