@@ -20,6 +20,7 @@ class SalesforceMatchQuery(BaseModel):
     city: Optional[str] = None
     country: Optional[str] = None
     website: Optional[str] = None
+    email: Optional[str] = None
     phone: Optional[str] = None
     register_id: Optional[str] = None
     vat_id: Optional[str] = None

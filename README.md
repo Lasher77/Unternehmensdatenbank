@@ -199,7 +199,11 @@ curl -X POST 'http://localhost:8080/api/salesforce/match-company' \
   -H 'Content-Type: application/json' \
   -d '{
     "query": {
-      "name": "Müritz"
+      "name": "Müritz",
+      "email": "kontakt@mueritz.de",
+      "website": "mueritz.de",
+      "city": "Berlin",
+      "country": "DE"
     },
     "options": {
       "min_score": 0.5,
