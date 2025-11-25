@@ -1,8 +1,15 @@
+import sys
+from pathlib import Path
+
 import pytest
 
 pytest.importorskip("httpx")
 from fastapi.testclient import TestClient
 from opensearchpy.exceptions import NotFoundError
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from backend.app.deps import get_os_client
 from backend.app.main import app
