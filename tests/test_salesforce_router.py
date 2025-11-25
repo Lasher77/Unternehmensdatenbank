@@ -87,3 +87,35 @@ def test_match_company_queries_all_name_fields() -> None:
         )
     finally:
         app.dependency_overrides.clear()
+
+
+def test_match_company_does_not_require_address_match() -> None:
+    client = RecordingOSClient()
+    app.dependency_overrides[get_os_client] = lambda: client
+    app.dependency_overrides[require_salesforce_bearer_token] = lambda: {
+        "integration": "salesforce"
+    }
+
+    try:
+        http_client = TestClient(app)
+        response = http_client.post(
+            "/api/salesforce/match-company",
+            json={
+                "query": {
+                    "name": "Zeit für Ethik",
+                    "street": "Valentin-Fürstenhöfer-Str. 40",
+                    "postal_code": "90556",
+                    "city": "Cadolzburg",
+                }
+            },
+            headers={"Authorization": "Bearer dummy"},
+        )
+
+        assert response.status_code == 200
+        # The name+address stage runs first, followed by the strict name stage
+        # which should not require an address match (``minimum_should_match`` = 0).
+        assert len(client.calls) >= 2
+        strict_query = client.calls[1]["body"].get("query", {}).get("bool", {})
+        assert strict_query.get("minimum_should_match", 0) == 0
+    finally:
+        app.dependency_overrides.clear()
