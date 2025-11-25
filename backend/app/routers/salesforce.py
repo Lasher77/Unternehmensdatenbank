@@ -257,6 +257,9 @@ def _stage_domain_match(
         },
     }
     refined_hits = _run_search(client, refined_query)
+    if not refined_hits and should:
+        refined_query["query"]["bool"]["minimum_should_match"] = 0
+        refined_hits = _run_search(client, refined_query)
     return refined_hits, "DOMAIN_EXACT" if refined_hits else None
 
 
