@@ -3,12 +3,25 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Optional
 from urllib.parse import urlparse
 
 
 def _collapse_spaces(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
+
+
+def _asciifold(value: str) -> str:
+    """Mimic the ``asciifolding`` filter used in OpenSearch analyzers.
+
+    This ensures that values like "München" are converted to "Munchen" so they
+    match the keyword fields indexed with ``keyword_lowercase`` +
+    ``asciifolding``.
+    """
+
+    normalized = unicodedata.normalize("NFKD", value)
+    return normalized.encode("ascii", "ignore").decode("ascii")
 
 
 def normalize_company_name(value: Optional[str]) -> Optional[str]:
@@ -20,6 +33,7 @@ def normalize_company_name(value: Optional[str]) -> Optional[str]:
     text = re.sub(r"\bco\.?\s*kg\b", "co kg", text)
     text = re.sub(r"\bco\.?\b", "co", text)
     text = re.sub(r"[^a-z0-9äöüß\- ]", " ", text)
+    text = _asciifold(text)
     text = _collapse_spaces(text)
     return text or None
 
@@ -34,6 +48,7 @@ def normalize_street(value: Optional[str]) -> Optional[str]:
     text = re.sub(r"\bstr\b", "strasse", text)
     text = re.sub(r"[.,]", " ", text)
     text = re.sub(r"[^a-z0-9äöüß\- ]", " ", text)
+    text = _asciifold(text)
     text = _collapse_spaces(text)
     return text or None
 
@@ -43,6 +58,7 @@ def normalize_city(value: Optional[str]) -> Optional[str]:
         return None
     text = value.lower()
     text = re.sub(r"[^a-z0-9äöüß\- ]", " ", text)
+    text = _asciifold(text)
     return _collapse_spaces(text) or None
 
 
