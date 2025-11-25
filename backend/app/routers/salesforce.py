@@ -317,7 +317,10 @@ def _stage_name_strict(client: OpenSearch, normalized: NormalizedQuery, size: in
     filters = _country_filter(normalized)
     address_should = _address_should(normalized)
     should = address_should + _domain_should(normalized)
-    minimum_should = 1 if address_should else 0
+    # Address/domain matches should improve the score but must not block name-only
+    # matches when the address information is incomplete or differs slightly from
+    # the indexed data. Therefore we keep them as optional ``should`` clauses.
+    minimum_should = 0
     query = {
         "size": size,
         "query": {
@@ -340,7 +343,9 @@ def _stage_name_fuzzy(
     filters = _country_filter(normalized)
     address_should = _address_should(normalized)
     should = address_should + _domain_should(normalized)
-    minimum_should = 1 if address_should else 0
+    # Keep address/domain signals optional to avoid suppressing good name matches
+    # when the address does not align perfectly with indexed data.
+    minimum_should = 0
     query = {
         "size": size,
         "query": {
