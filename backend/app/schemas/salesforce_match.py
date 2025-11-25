@@ -60,6 +60,12 @@ class SalesforceMatchItem(BaseModel):
     reasons: List[str] = Field(default_factory=list)
 
 
+class SalesforceMatchResult(BaseModel):
+    company: Optional[SalesforceMatchedCompany] = None
+    match_level: str
+    confidence: float
+
+
 class SalesforceMatchThresholds(BaseModel):
     auto_link: float = 0.9
     review: float = 0.7
@@ -68,6 +74,7 @@ class SalesforceMatchThresholds(BaseModel):
 class SalesforceMatchResponse(BaseModel):
     matches: List[SalesforceMatchItem]
     best_match: Optional[SalesforceMatchItem] = None
+    result: SalesforceMatchResult
     thresholds: SalesforceMatchThresholds = Field(
         default_factory=SalesforceMatchThresholds
     )
