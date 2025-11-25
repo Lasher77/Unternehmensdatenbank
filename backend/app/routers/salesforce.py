@@ -194,16 +194,7 @@ def _stage_domain_match(
         {"term": {"domain_normalized": normalized.domain_normalized}},
     ]
     if normalized.name_normalized:
-        must.append(
-            {
-                "match": {
-                    "name_normalized": {
-                        "query": normalized.name_normalized,
-                        "operator": "and",
-                    }
-                }
-            }
-        )
+        must.append(_name_query(normalized, fuzziness=None))
     should = _address_should(normalized)
     refined_query = {
         "size": size,
@@ -220,6 +211,21 @@ def _stage_domain_match(
     return refined_hits, "DOMAIN_EXACT" if refined_hits else None
 
 
+def _name_query(
+    normalized: NormalizedQuery, fuzziness: int | str | None = 0, prefix_length: int | None = None
+) -> dict[str, Any]:
+    match: dict[str, Any] = {
+        "query": normalized.name_normalized,
+        "fields": ["name_normalized", "name", "name.edge"],
+        "operator": "and",
+    }
+    if fuzziness is not None:
+        match["fuzziness"] = fuzziness
+    if prefix_length is not None:
+        match["prefix_length"] = prefix_length
+    return {"multi_match": match}
+
+
 def _stage_name_address(
     client: OpenSearch, normalized: NormalizedQuery, size: int
 ) -> list[Mapping[str, Any]]:
@@ -230,17 +236,7 @@ def _stage_name_address(
         "size": size,
         "query": {
             "bool": {
-                "must": [
-                    {
-                        "match": {
-                            "name_normalized": {
-                                "query": normalized.name_normalized,
-                                "operator": "and",
-                                "fuzziness": 0,
-                            }
-                        }
-                    }
-                ],
+                "must": [_name_query(normalized, fuzziness=0)],
                 "should": _address_should(normalized),
                 "filter": filters,
                 "minimum_should_match": 0,
@@ -258,17 +254,7 @@ def _stage_name_strict(client: OpenSearch, normalized: NormalizedQuery, size: in
         "size": size,
         "query": {
             "bool": {
-                "must": [
-                    {
-                        "match": {
-                            "name_normalized": {
-                                "query": normalized.name_normalized,
-                                "operator": "and",
-                                "fuzziness": 0,
-                            }
-                        }
-                    }
-                ],
+                "must": [_name_query(normalized, fuzziness=0)],
                 "should": _address_should(normalized),
                 "filter": filters,
                 "minimum_should_match": 0,
@@ -288,18 +274,7 @@ def _stage_name_fuzzy(
         "size": size,
         "query": {
             "bool": {
-                "must": [
-                    {
-                        "match": {
-                            "name_normalized": {
-                                "query": normalized.name_normalized,
-                                "fuzziness": "AUTO",
-                                "prefix_length": 2,
-                                "operator": "and",
-                            }
-                        }
-                    }
-                ],
+                "must": [_name_query(normalized, fuzziness="AUTO", prefix_length=2)],
                 "should": _address_should(normalized),
                 "filter": filters,
                 "minimum_should_match": 0,
