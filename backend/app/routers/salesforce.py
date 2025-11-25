@@ -51,6 +51,7 @@ class NormalizedQuery:
     country: str | None = None
     domain_normalized: str | None = None
     website: str | None = None
+    email: str | None = None
 
 
 def _clean_str(value: str | None) -> str | None:
@@ -63,6 +64,7 @@ def _clean_str(value: str | None) -> str | None:
 def _normalize_query_model(match_request: SalesforceMatchRequest) -> NormalizedQuery:
     q = match_request.query
     country_clean = _clean_str(q.country)
+    email_clean = _clean_str(getattr(q, "email", None))
     return NormalizedQuery(
         name=_clean_str(q.name),
         name_normalized=normalize_company_name(q.name),
@@ -74,6 +76,7 @@ def _normalize_query_model(match_request: SalesforceMatchRequest) -> NormalizedQ
         country=country_clean.upper() if country_clean else None,
         domain_normalized=normalize_domain(q.website),
         website=_clean_str(q.website),
+        email=email_clean,
     )
 
 
@@ -146,6 +149,13 @@ def _hits_to_match_items(
             continue
         company = _hit_to_company(hit)
         reasons = [match_level]
+        status = (company.status or "").lower()
+        if status == "active":
+            score *= 1.05
+            reasons.append("status_active_boost")
+        elif status and status != "active":
+            score *= 0.85
+            reasons.append("status_penalty")
         if address_match_source_id and str(company.source_id) == str(address_match_source_id):
             reasons.append("address_match")
         items.append(
@@ -174,24 +184,63 @@ def _has_address_match(hit: Mapping[str, Any], normalized: NormalizedQuery) -> b
 def _stage_domain_match(
     client: OpenSearch, normalized: NormalizedQuery, size: int
 ) -> tuple[list[Mapping[str, Any]], str | None]:
-    if not normalized.domain_normalized:
+    if not (normalized.domain_normalized or normalized.website or normalized.email):
         return [], None
     filters = _country_filter(normalized)
+    domain_fragment = normalized.domain_normalized
+    website_fragment = normalized.website.lower() if normalized.website else None
+    email_fragment = normalized.email.lower() if normalized.email else None
+
+    should: list[dict[str, Any]] = []
+    if domain_fragment:
+        should.append({"term": {"domain_normalized": domain_fragment}})
+        should.append(
+            {
+                "wildcard": {
+                    "website": {"value": f"*{domain_fragment}*", "boost": 0.8}
+                }
+            }
+        )
+        should.append(
+            {
+                "wildcard": {
+                    "email": {"value": f"*{domain_fragment}", "boost": 0.6}
+                }
+            }
+        )
+    if website_fragment and not domain_fragment:
+        should.append(
+            {
+                "wildcard": {
+                    "website": {"value": f"*{website_fragment}*", "boost": 1.0}
+                }
+            }
+        )
+    if email_fragment and not domain_fragment:
+        should.append(
+            {
+                "wildcard": {
+                    "email": {"value": f"*{email_fragment}", "boost": 0.6}
+                }
+            }
+        )
+
     base_query = {
         "size": size,
         "query": {
             "bool": {
-                "must": [{"term": {"domain_normalized": normalized.domain_normalized}}],
+                "should": should,
                 "filter": filters,
+                "minimum_should_match": 1,
             }
-        }
+        },
     }
     hits = _run_search(client, base_query)
     if len(hits) <= 1:
         return hits, "DOMAIN_EXACT" if hits else None
 
     must: list[dict[str, Any]] = [
-        {"term": {"domain_normalized": normalized.domain_normalized}},
+        {"bool": {"should": should, "minimum_should_match": 1}},
     ]
     if normalized.name_normalized:
         must.append(_name_query(normalized, fuzziness=None))
@@ -232,14 +281,15 @@ def _stage_name_address(
     if not normalized.name_normalized:
         return []
     filters = _country_filter(normalized)
+    address_should = _address_should(normalized)
     query = {
         "size": size,
         "query": {
             "bool": {
                 "must": [_name_query(normalized, fuzziness=0)],
-                "should": _address_should(normalized),
+                "should": address_should,
                 "filter": filters,
-                "minimum_should_match": 0,
+                "minimum_should_match": 1 if address_should else 0,
             }
         },
     }
@@ -250,14 +300,15 @@ def _stage_name_strict(client: OpenSearch, normalized: NormalizedQuery, size: in
     if not normalized.name_normalized:
         return []
     filters = _country_filter(normalized)
+    address_should = _address_should(normalized)
     query = {
         "size": size,
         "query": {
             "bool": {
                 "must": [_name_query(normalized, fuzziness=0)],
-                "should": _address_should(normalized),
+                "should": address_should,
                 "filter": filters,
-                "minimum_should_match": 0,
+                "minimum_should_match": 1 if address_should else 0,
             }
         },
     }
@@ -270,14 +321,15 @@ def _stage_name_fuzzy(
     if not normalized.name_normalized:
         return []
     filters = _country_filter(normalized)
+    address_should = _address_should(normalized)
     query = {
         "size": size,
         "query": {
             "bool": {
                 "must": [_name_query(normalized, fuzziness="AUTO", prefix_length=2)],
-                "should": _address_should(normalized),
+                "should": address_should,
                 "filter": filters,
-                "minimum_should_match": 0,
+                "minimum_should_match": 1 if address_should else 0,
             }
         },
     }
