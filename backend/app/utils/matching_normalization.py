@@ -47,6 +47,7 @@ def normalize_street(value: Optional[str]) -> Optional[str]:
     text = re.sub(r"\bstr\.\b", "strasse", text)
     text = re.sub(r"\bstr\b", "strasse", text)
     text = re.sub(r"[.,]", " ", text)
+    text = re.sub(r"(?P<num>\d+)(?P<suffix>[a-z])\b", r"\g<num> \g<suffix>", text)
     text = re.sub(r"[^a-z0-9äöüß\- ]", " ", text)
     text = _asciifold(text)
     text = _collapse_spaces(text)
