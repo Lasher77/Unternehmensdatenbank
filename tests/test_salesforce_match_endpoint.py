@@ -135,3 +135,66 @@ def test_match_company_prefers_address_fuzzy_matches():
     assert payload["matches"][1]["company"]["source_id"] == "def"
 
     app.dependency_overrides.clear()
+
+
+def test_match_company_uses_email_domain_when_no_website():
+    client = _build_test_client(
+        [
+            [
+                {
+                    "_score": 1.4,
+                    "_source": {
+                        "source_id": "email-1",
+                        "name": "Acme Widgets GmbH",
+                        "email": "sales@acme-widgets.example",
+                        "country": "DE",
+                        "website": None,
+                        "status": "active",
+                    },
+                }
+            ]
+        ]
+    )
+
+    response = client.post(
+        "/api/salesforce/match-company",
+        headers={"Authorization": "Bearer test-token"},
+        json={
+            "query": {
+                "name": "Acme Widgets",
+                "email": "sales@acme-widgets.example",
+                "country": "DE",
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result"]["match_level"] == "DOMAIN_EXACT"
+    assert payload["best_match"]["company"]["source_id"] == "email-1"
+
+
+def test_match_company_handles_name_only_fuzzy_request():
+    fuzzy_hits: list[dict[str, Any]] = [
+        {
+            "_score": 0.8,
+            "_source": {
+                "source_id": "solo-name",
+                "name": "Globex Corporation",
+                "country": "DE",
+            },
+        }
+    ]
+
+    client = _build_test_client([[], fuzzy_hits])
+
+    response = client.post(
+        "/api/salesforce/match-company",
+        headers={"Authorization": "Bearer test-token"},
+        json={"query": {"name": "Globex Corp", "country": "DE"}},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result"]["match_level"] == "NAME_FUZZY_ONLY"
+    assert payload["best_match"]["company"]["source_id"] == "solo-name"

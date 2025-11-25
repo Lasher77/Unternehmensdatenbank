@@ -52,6 +52,7 @@ class NormalizedQuery:
     domain_normalized: str | None = None
     website: str | None = None
     email: str | None = None
+    email_domain_normalized: str | None = None
 
 
 def _clean_str(value: str | None) -> str | None:
@@ -61,10 +62,22 @@ def _clean_str(value: str | None) -> str | None:
     return cleaned or None
 
 
+def _normalize_email(value: str | None) -> tuple[str | None, str | None]:
+    if not value:
+        return None, None
+    cleaned = value.strip().lower()
+    if not cleaned:
+        return None, None
+    if "@" not in cleaned:
+        return cleaned, None
+    _, domain = cleaned.rsplit("@", 1)
+    return cleaned, normalize_domain(domain)
+
+
 def _normalize_query_model(match_request: SalesforceMatchRequest) -> NormalizedQuery:
     q = match_request.query
     country_clean = _clean_str(q.country)
-    email_clean = _clean_str(getattr(q, "email", None))
+    email_clean, email_domain = _normalize_email(getattr(q, "email", None))
     return NormalizedQuery(
         name=_clean_str(q.name),
         name_normalized=normalize_company_name(q.name),
@@ -77,6 +90,7 @@ def _normalize_query_model(match_request: SalesforceMatchRequest) -> NormalizedQ
         domain_normalized=normalize_domain(q.website),
         website=_clean_str(q.website),
         email=email_clean,
+        email_domain_normalized=email_domain,
     )
 
 
@@ -103,6 +117,38 @@ def _address_should(normalized: NormalizedQuery) -> list[dict[str, Any]]:
         should.append(
             {"term": {"street_normalized": {"value": normalized.street_normalized, "boost": 1.5}}}
         )
+    return should
+
+
+def _domain_should(normalized: NormalizedQuery) -> list[dict[str, Any]]:
+    should: list[dict[str, Any]] = []
+    fragments: list[str] = []
+
+    if normalized.domain_normalized:
+        fragments.append(normalized.domain_normalized)
+    if (
+        normalized.email_domain_normalized
+        and normalized.email_domain_normalized not in fragments
+    ):
+        fragments.append(normalized.email_domain_normalized)
+
+    website_fragment = normalized.website.lower() if normalized.website else None
+    email_fragment = normalized.email
+
+    for fragment in fragments:
+        should.append({"term": {"domain_normalized": fragment}})
+        should.append(
+            {"wildcard": {"website": {"value": f"*{fragment}*", "boost": 0.8}}}
+        )
+        should.append({"wildcard": {"email": {"value": f"*{fragment}", "boost": 0.6}}})
+
+    if website_fragment and not fragments:
+        should.append(
+            {"wildcard": {"website": {"value": f"*{website_fragment}*", "boost": 1.0}}}
+        )
+    if email_fragment and not fragments:
+        should.append({"wildcard": {"email": {"value": f"*{email_fragment}", "boost": 0.6}}})
+
     return should
 
 
@@ -184,52 +230,16 @@ def _has_address_match(hit: Mapping[str, Any], normalized: NormalizedQuery) -> b
 def _stage_domain_match(
     client: OpenSearch, normalized: NormalizedQuery, size: int
 ) -> tuple[list[Mapping[str, Any]], str | None]:
-    if not (normalized.domain_normalized or normalized.website or normalized.email):
+    domain_should = _domain_should(normalized)
+    if not domain_should:
         return [], None
     filters = _country_filter(normalized)
-    domain_fragment = normalized.domain_normalized
-    website_fragment = normalized.website.lower() if normalized.website else None
-    email_fragment = normalized.email.lower() if normalized.email else None
-
-    should: list[dict[str, Any]] = []
-    if domain_fragment:
-        should.append({"term": {"domain_normalized": domain_fragment}})
-        should.append(
-            {
-                "wildcard": {
-                    "website": {"value": f"*{domain_fragment}*", "boost": 0.8}
-                }
-            }
-        )
-        should.append(
-            {
-                "wildcard": {
-                    "email": {"value": f"*{domain_fragment}", "boost": 0.6}
-                }
-            }
-        )
-    if website_fragment and not domain_fragment:
-        should.append(
-            {
-                "wildcard": {
-                    "website": {"value": f"*{website_fragment}*", "boost": 1.0}
-                }
-            }
-        )
-    if email_fragment and not domain_fragment:
-        should.append(
-            {
-                "wildcard": {
-                    "email": {"value": f"*{email_fragment}", "boost": 0.6}
-                }
-            }
-        )
 
     base_query = {
         "size": size,
         "query": {
             "bool": {
-                "should": should,
+                "should": domain_should,
                 "filter": filters,
                 "minimum_should_match": 1,
             }
@@ -240,11 +250,11 @@ def _stage_domain_match(
         return hits, "DOMAIN_EXACT" if hits else None
 
     must: list[dict[str, Any]] = [
-        {"bool": {"should": should, "minimum_should_match": 1}},
+        {"bool": {"should": domain_should, "minimum_should_match": 1}},
     ]
     if normalized.name_normalized:
         must.append(_name_query(normalized, fuzziness=None))
-    should = _address_should(normalized)
+    should = domain_should + _address_should(normalized)
     refined_query = {
         "size": size,
         "query": {
@@ -285,6 +295,8 @@ def _stage_name_address(
         return []
     filters = _country_filter(normalized)
     address_should = _address_should(normalized)
+    if not address_should:
+        return []
     query = {
         "size": size,
         "query": {
@@ -304,14 +316,16 @@ def _stage_name_strict(client: OpenSearch, normalized: NormalizedQuery, size: in
         return []
     filters = _country_filter(normalized)
     address_should = _address_should(normalized)
+    should = address_should + _domain_should(normalized)
+    minimum_should = 1 if address_should else 0
     query = {
         "size": size,
         "query": {
             "bool": {
                 "must": [_name_query(normalized, fuzziness=0)],
-                "should": address_should,
+                "should": should,
                 "filter": filters,
-                "minimum_should_match": 1 if address_should else 0,
+                "minimum_should_match": minimum_should,
             }
         },
     }
@@ -325,14 +339,16 @@ def _stage_name_fuzzy(
         return []
     filters = _country_filter(normalized)
     address_should = _address_should(normalized)
+    should = address_should + _domain_should(normalized)
+    minimum_should = 1 if address_should else 0
     query = {
         "size": size,
         "query": {
             "bool": {
                 "must": [_name_query(normalized, fuzziness="AUTO", prefix_length=2)],
-                "should": address_should,
+                "should": should,
                 "filter": filters,
-                "minimum_should_match": 1 if address_should else 0,
+                "minimum_should_match": minimum_should,
             }
         },
     }
