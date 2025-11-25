@@ -26,7 +26,15 @@ logger = logging.getLogger(__name__)
 
 
 metadata = MetaData()
-companies_table = Table("companies", metadata, autoload_with=engine)
+companies_table: Table | None = None
+
+
+def _get_companies_table() -> Table:
+    global companies_table
+
+    if companies_table is None:
+        companies_table = Table("companies", metadata, autoload_with=engine)
+    return companies_table
 
 
 @dataclass
@@ -191,7 +199,7 @@ def _insert_errors(conn, errors: list[IngestionError]) -> None:
 
 
 def _upsert_company(conn, company: dict[str, Any], run_id: int) -> None:
-    insert_stmt = insert(companies_table).values(
+    insert_stmt = insert(_get_companies_table()).values(
         source_id=company["source_id"],
         raw_name=company.get("raw_name"),
         legal_form=company.get("legal_form"),
@@ -219,7 +227,7 @@ def _upsert_company(conn, company: dict[str, Any], run_id: int) -> None:
     )
 
     upsert_stmt = insert_stmt.on_conflict_do_update(
-        index_elements=[companies_table.c.source_id],
+        index_elements=[_get_companies_table().c.source_id],
         set_={
             "raw_name": insert_stmt.excluded.raw_name,
             "legal_form": insert_stmt.excluded.legal_form,
