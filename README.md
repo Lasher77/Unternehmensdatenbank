@@ -137,6 +137,16 @@ docker compose run --rm backend python scripts/run_migrations.py
 Swagger UI: <http://localhost:8080/docs>
 MinIO Console: <http://localhost:9001>
 
+### OpenSearch neu aufbauen
+
+Um den Firmenindex nach Imports oder Schemaänderungen neu aufzubauen, nutze das bestehende Backend-Image und rufe das Skript innerhalb des Containers auf:
+
+```bash
+docker compose run --rm backend python scripts/reindex_companies.py
+```
+
+Der Container arbeitet im Verzeichnis `/app`; dank eines Symlinks funktioniert auch der ältere Pfad `python backend/scripts/reindex_companies.py` wieder.
+
 ### Salesforce Matching API Token
 
 Die Salesforce-Matching-Endpunkte erwarten einen Bearer-Token in der `Authorization`-Headerzeile.
