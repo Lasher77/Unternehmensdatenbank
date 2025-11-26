@@ -1,7 +1,14 @@
+import sys
+from pathlib import Path
+
 from sqlalchemy import text
 
-from backend.app.db import engine
-from backend.app.opensearch_client import (
+BASE_DIR = Path(__file__).resolve().parents[1]
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
+from app.db import engine
+from app.opensearch_client import (
     ensure_companies_index,
     get_opensearch,
     index_companies,
@@ -15,6 +22,13 @@ QUERY = """
         state,
         city,
         postal_code,
+        street,
+        country,
+        COALESCE(email, data->>'email') AS email,
+        COALESCE(website, data->>'website') AS website,
+        COALESCE(phone, data->>'phone') AS phone,
+        register_id,
+        COALESCE(data->>'vat_id', data->>'vatId') AS vat_id,
         status,
         legal_form,
         lat,
