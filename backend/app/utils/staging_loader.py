@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 from sqlalchemy import text
 
 from ..schemas.company import _normalize_optional_bool
+from .date_normalization import normalize_birth_date
 from .country_normalization import normalize_country_code
 
 
@@ -27,6 +28,25 @@ def _normalize_company_payload(company: Dict[str, Any]) -> Dict[str, Any]:
         if field in normalized:
             normalized[field] = normalize_country_code(normalized.get(field))
 
+    return normalized
+
+
+def _normalize_person_payload(person: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a copy of ``person`` with a normalized birth date if present."""
+
+    normalized = dict(person)
+    data = dict(normalized.get("data", {}))
+
+    if "birthDate" in data:
+        birth_date_raw = data.get("birthDate")
+        normalized_birth_date = normalize_birth_date(str(birth_date_raw)) if birth_date_raw is not None else None
+
+        if normalized_birth_date is None:
+            data["birthDate"] = None
+        else:
+            data["birthDate"] = normalized_birth_date
+
+    normalized["data"] = data
     return normalized
 
 
@@ -76,6 +96,7 @@ def load_to_staging(rows: List[Dict], run_id: int) -> None:
                 )
 
             for person in row.get("persons", []):
+                normalized_person = _normalize_person_payload(person)
                 conn.execute(
                     text(
                         "INSERT INTO staging_persons "
@@ -83,8 +104,8 @@ def load_to_staging(rows: List[Dict], run_id: int) -> None:
                         "VALUES (:source_person_id, :data, :run_id)"
                     ),
                     {
-                        "source_person_id": person["source_person_id"],
-                        "data": json.dumps(person["data"]),
+                        "source_person_id": normalized_person["source_person_id"],
+                        "data": json.dumps(normalized_person["data"]),
                         "run_id": run_id,
                     },
                 )
