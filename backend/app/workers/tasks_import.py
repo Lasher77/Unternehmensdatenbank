@@ -483,11 +483,13 @@ def run_import(self, s3_key: str, label: str | None = None) -> ImportRunResult:
                                     raw_excerpt=raw_line[:500],
                                 )
                             )
+                            rows_batch = []
                             if len(errors) >= BATCH_ERROR_SIZE:
                                 with conn.begin():
                                     _insert_errors(conn, errors)
                                 errors = []
                         else:
+                            successful_records += len(rows_batch)
                             rows_batch = []
 
                 except Exception as exc:  # noqa: BLE001
@@ -510,7 +512,6 @@ def run_import(self, s3_key: str, label: str | None = None) -> ImportRunResult:
                     continue
 
                 seen_source_ids.add(source_id)
-                successful_records += 1
 
                 self.update_state(
                     state="PROGRESS",
@@ -537,6 +538,8 @@ def run_import(self, s3_key: str, label: str | None = None) -> ImportRunResult:
                             raw_excerpt=None,
                         )
                     )
+                else:
+                    successful_records += len(rows_batch)
 
             if errors:
                 with conn.begin():
