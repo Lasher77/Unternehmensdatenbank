@@ -167,7 +167,7 @@ def map_company_payload(obj: dict[str, Any]) -> dict[str, Any]:
         "website": website,
         "phone": phone,
         "revenue": _extract_revenue(financials_data),
-        "data": json.dumps(obj),
+        "data": obj,
     }
 
 
@@ -661,7 +661,7 @@ def finalize_import(result: Union[ImportRunResult, int]) -> Union[ImportRunResul
             ensure_companies_index(client)
             index_companies(client, companies)
     except Exception:
-        pass
+        logger.exception("Failed to index companies in OpenSearch")
 
     return payload
 
