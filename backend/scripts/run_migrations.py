@@ -8,6 +8,7 @@ containers and local development environments alike.
 from __future__ import annotations
 
 import logging
+from contextlib import closing
 from pathlib import Path
 
 from psycopg2 import Error
@@ -38,8 +39,12 @@ def apply_migrations() -> None:
 
     raw_conn = engine.raw_connection()
     try:
-        raw_conn.autocommit = True
-        with raw_conn.cursor() as cursor:
+        if hasattr(raw_conn, "autocommit"):
+            raw_conn.autocommit = True
+        elif hasattr(raw_conn, "isolation_level"):
+            raw_conn.isolation_level = None
+
+        with closing(raw_conn.cursor()) as cursor:
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS schema_migrations (
