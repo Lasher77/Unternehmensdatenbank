@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import text
 
 from ..db import engine
-from ..workers.tasks_import import cleanup_import_file, run_import
+from ..workers.tasks_import import cleanup_import_file, finalize_import, run_import
 
 from ..schemas.import_ import (
     ImportErrorEntry,
@@ -43,7 +43,7 @@ async def create_import(
 
         await file.close()
 
-        workflow = run_import.s(temp_path, label) | cleanup_import_file.s()
+        workflow = run_import.s(temp_path, label) | finalize_import.s() | cleanup_import_file.s()
         task = workflow.apply_async()
         task_id = task.id
     else:
