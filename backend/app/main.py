@@ -1,15 +1,14 @@
 from contextlib import asynccontextmanager
 import logging
 
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from opensearchpy import OpenSearch
 from opensearchpy.exceptions import ConnectionError as OpenSearchConnectionError
 from sqlalchemy import text
-from sqlalchemy.engine import Connection
 
 from .config import get_settings
-from .deps import get_db_conn, get_os_client
+from .db import engine
 from .opensearch_client import ensure_companies_index, get_opensearch
 from .routers import companies, exports, imports, salesforce, search, stats, tasks
 
@@ -50,13 +49,11 @@ app.include_router(tasks.router)
 
 
 @app.get("/healthz")
-def healthz(
-    db: Connection = Depends(get_db_conn),
-    os_client: OpenSearch = Depends(get_os_client),
-) -> dict[str, str]:
+def healthz() -> dict[str, str]:
     try:
-        db.execute(text("SELECT 1"))
-        os_client.info()
+        with engine.begin() as conn:
+            conn.execute(text("SELECT 1"))
+        get_opensearch().info()
     except Exception:  # pragma: no cover - simple health check
         return {"status": "unhealthy"}
     return {"status": "ok"}
