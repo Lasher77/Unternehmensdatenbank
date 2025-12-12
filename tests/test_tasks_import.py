@@ -106,15 +106,19 @@ def test_run_import_ignores_duplicate_source_ids(monkeypatch: pytest.MonkeyPatch
         def begin(self) -> FakeConnection:
             return self.update_connection
 
-    upserts: list[str] = []
+    staged_source_ids: list[str] = []
 
     monkeypatch.setattr(tasks_import, "engine", FakeEngine())
     monkeypatch.setattr(
         tasks_import,
-        "map_company_payload",
-        lambda obj: {"source_id": obj["id"], "raw_name": obj.get("name", ""), "data": obj},
+        "map_import_row",
+        lambda obj: {"company": {"source_id": obj["id"], "raw_name": obj.get("name", ""), "data": obj}},
     )
-    monkeypatch.setattr(tasks_import, "_upsert_company", lambda conn, company, run_id: upserts.append(company["source_id"]))
+    monkeypatch.setattr(
+        tasks_import.staging_loader,
+        "load_to_staging",
+        lambda rows, run_id: staged_source_ids.extend(row["company"]["source_id"] for row in rows),
+    )
     monkeypatch.setattr(tasks_import, "get_opensearch", lambda: object())
     monkeypatch.setattr(tasks_import, "ensure_companies_index", lambda client: None)
     monkeypatch.setattr(tasks_import, "index_companies", lambda client, companies: None)
@@ -125,5 +129,73 @@ def test_run_import_ignores_duplicate_source_ids(monkeypatch: pytest.MonkeyPatch
     assert result["successful_records"] == 1
     assert result["error_records"] == 0
     assert result["total_records"] == 2
-    assert upserts == ["dup-1"]
+    assert staged_source_ids == ["dup-1"]
     assert json.loads(tasks_import.engine.update_connection.summary or "{}") == {"companies": 1, "errors": 0}
+
+
+def test_finalize_import_promotes_and_indexes(monkeypatch: pytest.MonkeyPatch) -> None:
+    promoted_runs: list[int] = []
+    indexed_companies: list[list[dict[str, Any]]] = []
+    finished_calls: list[datetime] = []
+
+    class FakeConnection:
+        def __enter__(self) -> "FakeConnection":
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> bool:  # type: ignore[override]
+            return False
+
+        def execute(self, statement: Any, params: dict[str, Any] | None = None) -> FakeResult:
+            sql = getattr(statement, "text", str(statement))
+            params = params or {}
+
+            if "FROM companies" in sql and "seen_in_run" in sql:
+                return FakeResult(
+                    rows=[
+                        {
+                            "source_id": "company-1",
+                            "name": "Example",
+                            "state": None,
+                            "city": None,
+                            "postal_code": None,
+                            "street": None,
+                            "country": None,
+                            "email": None,
+                            "website": None,
+                            "phone": None,
+                            "register_id": None,
+                            "vat_id": None,
+                            "status": None,
+                            "legal_form": None,
+                            "lat": None,
+                            "lng": None,
+                        }
+                    ]
+                )
+
+            if "UPDATE ingestion_run" in sql:
+                finished_calls.append(params.get("finished_at"))
+                return FakeResult()
+
+            raise AssertionError(f"Unexpected SQL: {sql}")
+
+        def begin(self) -> "FakeConnection":
+            return self
+
+    class FakeEngine:
+        def begin(self) -> FakeConnection:
+            return FakeConnection()
+
+    monkeypatch.setattr(tasks_import, "engine", FakeEngine())
+    monkeypatch.setattr(tasks_import.staging_loader, "promote_staging", lambda run_id: promoted_runs.append(run_id))
+    monkeypatch.setattr(tasks_import, "get_opensearch", lambda: object())
+    monkeypatch.setattr(tasks_import, "ensure_companies_index", lambda client: None)
+    monkeypatch.setattr(tasks_import, "index_companies", lambda client, companies: indexed_companies.append(companies))
+
+    payload = {"run_id": 99, "file": "example.ndjson"}
+    result = tasks_import.finalize_import.run(payload)
+
+    assert result == payload
+    assert promoted_runs == [99]
+    assert indexed_companies and indexed_companies[0][0]["source_id"] == "company-1"
+    assert finished_calls and isinstance(finished_calls[0], datetime)

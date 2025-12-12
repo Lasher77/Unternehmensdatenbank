@@ -11,16 +11,18 @@ from pathlib import Path
 from typing import Any, TypedDict, Union
 
 from sqlalchemy import MetaData, Table, func, text
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import SQLAlchemyError
 
 from .celery_app import celery_app
 from ..db import engine
 from ..opensearch_client import ensure_companies_index, get_opensearch, index_companies
 from ..schemas.company import _normalize_optional_bool
+from ..utils import staging_loader
 from ..utils.country_normalization import normalize_country_code
 
 BATCH_ERROR_SIZE = 100
+STAGING_BATCH_SIZE = 200
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +171,108 @@ def map_company_payload(obj: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _map_events(source_id: str, obj: dict[str, Any]) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+
+    for item in _ensure_list(_ensure_dict(obj.get("events")).get("items")):
+        if not isinstance(item, dict):
+            continue
+        events.append(
+            {
+                "source_id": source_id,
+                "event_date": item.get("date"),
+                "event_type": item.get("type"),
+                "description": item.get("description"),
+            }
+        )
+
+    return events
+
+
+def _map_persons_and_roles(source_id: str, obj: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    persons: list[dict[str, Any]] = []
+    roles: list[dict[str, Any]] = []
+
+    for related in _ensure_list(_ensure_dict(obj.get("relatedPersons")).get("items")):
+        person_data = _ensure_dict(related.get("person"))
+        source_person_id = person_data.get("id")
+        if not source_person_id:
+            continue
+
+        persons.append({"source_person_id": str(source_person_id), "data": person_data})
+
+        for role in _ensure_list(related.get("roles")):
+            if not isinstance(role, dict):
+                continue
+            roles.append(
+                {
+                    "source_id": source_id,
+                    "source_person_id": str(source_person_id),
+                    "role_name": role.get("name"),
+                    "role_type": role.get("type"),
+                    "role_date": role.get("date"),
+                    "description": related.get("description"),
+                    "demotion": role.get("demotion"),
+                }
+            )
+
+    return persons, roles
+
+
+def _map_industries(source_id: str, obj: dict[str, Any]) -> list[dict[str, Any]]:
+    industries: list[dict[str, Any]] = []
+    segment_codes = _ensure_dict(obj.get("segmentCodes"))
+
+    for scheme, values in segment_codes.items():
+        for code in _ensure_list(values):
+            industries.append({"source_id": source_id, "scheme": scheme, "code": code})
+
+    return industries
+
+
+def _map_relations(source_id: str, obj: dict[str, Any]) -> list[dict[str, Any]]:
+    relations: list[dict[str, Any]] = []
+    for related in _ensure_list(_ensure_dict(obj.get("relatedCompanies")).get("items")):
+        related_company = related.get("company") if isinstance(related, dict) else None
+        related_source_id = None
+        if isinstance(related, dict):
+            if isinstance(related_company, dict):
+                related_source_id = related_company.get("id")
+            if not related_source_id:
+                related_source_id = related.get("id")
+
+            if related_source_id:
+                relations.append(
+                    {
+                        "source_id": source_id,
+                        "related_source_id": str(related_source_id),
+                        "relation_type": related.get("relationType") or related.get("type"),
+                        "description": related.get("description"),
+                    }
+                )
+
+    return relations
+
+
+def map_import_row(obj: dict[str, Any]) -> dict[str, Any]:
+    source_id = extract_source_id(obj)
+
+    company_payload = map_company_payload(obj)
+    events = _map_events(source_id, obj)
+    persons, roles = _map_persons_and_roles(source_id, obj)
+    industries = _map_industries(source_id, obj)
+    relations = _map_relations(source_id, obj)
+
+    return {
+        "company": company_payload,
+        "events": events,
+        "persons": persons,
+        "roles": roles,
+        "industries": industries,
+        "relations": relations,
+    }
+
+
 def _insert_errors(conn, errors: list[IngestionError]) -> None:
     if not errors:
         return
@@ -278,12 +382,12 @@ def run_import(self, s3_key: str, label: str | None = None) -> ImportRunResult:
 
         errors: list[IngestionError] = []
         seen_source_ids: set[str] = set()
-        successful_source_ids: list[str] = []
         processed = 0
         successful_records = 0
         error_records = 0
 
         with engine.connect() as conn:
+            rows_batch: list[dict[str, Any]] = []
             for line_number, line in enumerate(fh, start=1):
                 raw_line = line.strip()
                 if not raw_line:
@@ -341,7 +445,7 @@ def run_import(self, s3_key: str, label: str | None = None) -> ImportRunResult:
                         continue
 
                     try:
-                        company_payload = map_company_payload(obj)
+                        row_payload = map_import_row(obj)
                     except Exception as exc:  # noqa: BLE001
                         error_records += 1
                         errors.append(
@@ -361,27 +465,31 @@ def run_import(self, s3_key: str, label: str | None = None) -> ImportRunResult:
                             errors = []
                         continue
 
-                    try:
-                        with conn.begin():
-                            _upsert_company(conn, company_payload, run_id)
-                    except SQLAlchemyError as exc:
-                        error_records += 1
-                        errors.append(
-                            IngestionError(
-                                run_id=run_id,
-                                source_id=source_id,
-                                line_number=line_number,
-                                file_name=file_name,
-                                error_code="UPSERT_ERROR",
-                                error_message=str(exc.orig) if hasattr(exc, "orig") else str(exc),
-                                raw_excerpt=raw_line[:500],
+                    rows_batch.append(row_payload)
+
+                    if len(rows_batch) >= STAGING_BATCH_SIZE:
+                        try:
+                            staging_loader.load_to_staging(rows_batch, run_id)
+                        except SQLAlchemyError as exc:
+                            error_records += len(rows_batch)
+                            errors.append(
+                                IngestionError(
+                                    run_id=run_id,
+                                    source_id=source_id,
+                                    line_number=line_number,
+                                    file_name=file_name,
+                                    error_code="STAGING_ERROR",
+                                    error_message=str(exc.orig) if hasattr(exc, "orig") else str(exc),
+                                    raw_excerpt=raw_line[:500],
+                                )
                             )
-                        )
-                        if len(errors) >= BATCH_ERROR_SIZE:
-                            with conn.begin():
-                                _insert_errors(conn, errors)
-                            errors = []
-                        continue
+                            if len(errors) >= BATCH_ERROR_SIZE:
+                                with conn.begin():
+                                    _insert_errors(conn, errors)
+                                errors = []
+                        else:
+                            rows_batch = []
+
                 except Exception as exc:  # noqa: BLE001
                     error_records += 1
                     errors.append(
@@ -403,7 +511,6 @@ def run_import(self, s3_key: str, label: str | None = None) -> ImportRunResult:
 
                 seen_source_ids.add(source_id)
                 successful_records += 1
-                successful_source_ids.append(source_id)
 
                 self.update_state(
                     state="PROGRESS",
@@ -414,51 +521,26 @@ def run_import(self, s3_key: str, label: str | None = None) -> ImportRunResult:
                     },
                 )
 
+            if rows_batch:
+                try:
+                    staging_loader.load_to_staging(rows_batch, run_id)
+                except SQLAlchemyError as exc:
+                    error_records += len(rows_batch)
+                    errors.append(
+                        IngestionError(
+                            run_id=run_id,
+                            source_id=None,
+                            line_number=None,
+                            file_name=file_name,
+                            error_code="STAGING_ERROR",
+                            error_message=str(exc.orig) if hasattr(exc, "orig") else str(exc),
+                            raw_excerpt=None,
+                        )
+                    )
+
             if errors:
                 with conn.begin():
                     _insert_errors(conn, errors)
-
-            companies: list[dict[str, Any]] = []
-            if successful_source_ids:
-                with conn.begin():
-                    companies = (
-                        conn.execute(
-                            text(
-                                """
-                                SELECT
-                                    source_id,
-                                    name_norm AS name,
-                                    state,
-                                    city,
-                                    postal_code,
-                                    street,
-                                    country,
-                                    COALESCE(email, data->>'email') AS email,
-                                    COALESCE(website, data->>'website') AS website,
-                                    COALESCE(phone, data->>'phone') AS phone,
-                                    register_id,
-                                    COALESCE(data->>'vat_id', data->>'vatId') AS vat_id,
-                                    status,
-                                    legal_form,
-                                    lat,
-                                    lng
-                                FROM companies
-                                WHERE source_id = ANY(:source_ids)
-                                """
-                            ),
-                            {"source_ids": successful_source_ids},
-                        )
-                        .mappings()
-                        .all()
-                    )
-
-        try:
-            if companies:
-                client = get_opensearch()
-                ensure_companies_index(client)
-                index_companies(client, companies)
-        except Exception:
-            pass
 
     finished_at = datetime.now(timezone.utc)
     with engine.begin() as conn:
@@ -504,6 +586,73 @@ def run_import(self, s3_key: str, label: str | None = None) -> ImportRunResult:
         "successful_records": successful_records,
         "error_records": error_records,
     }
+
+
+@celery_app.task
+def finalize_import(result: Union[ImportRunResult, int]) -> Union[ImportRunResult, int]:
+    if isinstance(result, dict):
+        payload = result
+        run_id = result["run_id"]
+    else:
+        payload = {"run_id": int(result)}
+        run_id = payload["run_id"]
+
+    staging_loader.promote_staging(run_id)
+
+    companies: list[dict[str, Any]] = []
+    finished_at = datetime.now(timezone.utc)
+    with engine.begin() as conn:
+        companies = (
+            conn.execute(
+                text(
+                    """
+                    SELECT
+                        source_id,
+                        name_norm AS name,
+                        state,
+                        city,
+                        postal_code,
+                        street,
+                        country,
+                        COALESCE(email, data->>'email') AS email,
+                        COALESCE(website, data->>'website') AS website,
+                        COALESCE(phone, data->>'phone') AS phone,
+                        register_id,
+                        COALESCE(data->>'vat_id', data->>'vatId') AS vat_id,
+                        status,
+                        legal_form,
+                        lat,
+                        lng
+                    FROM companies
+                    WHERE seen_in_run = :run_id
+                    """
+                ),
+                {"run_id": run_id},
+            )
+            .mappings()
+            .all()
+        )
+
+        conn.execute(
+            text(
+                """
+                UPDATE ingestion_run
+                SET finished_at = :finished_at
+                WHERE run_id = :run_id
+                """
+            ),
+            {"finished_at": finished_at, "run_id": run_id},
+        )
+
+    try:
+        if companies:
+            client = get_opensearch()
+            ensure_companies_index(client)
+            index_companies(client, companies)
+    except Exception:
+        pass
+
+    return payload
 
 
 @celery_app.task
