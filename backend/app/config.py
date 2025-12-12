@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    database_url: str = "sqlite+pysqlite:///:memory:"
+    database_url: str | None = None
     postgres_host: str = "db"
     postgres_port: int = 5432
     postgres_user: str = "postgres"
