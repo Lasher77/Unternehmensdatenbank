@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import sys
 from datetime import date
 from pathlib import Path
@@ -39,7 +38,7 @@ class FakeConnection:
                     if row["run_id"] != run_id:
                         continue
 
-                    company_data = json.loads(row["data"])
+                    company_data = row["data"]
                     terminated = company_data.get("terminated")
 
                     if isinstance(terminated, str) and terminated.lower() not in {
@@ -72,7 +71,7 @@ class FakeConnection:
                 if row["run_id"] != run_id:
                     continue
 
-                person_data = json.loads(row["data"])
+                person_data = row["data"]
                 raw_birth = person_data.get("birthDate")
 
                 if use_nullif and raw_birth == "":
@@ -174,7 +173,7 @@ def test_load_to_staging_normalizes_terminated(monkeypatch: pytest.MonkeyPatch) 
     staging_loader.load_to_staging(rows, run_id=1)
 
     stored = tables["staging_companies"][0]
-    company_payload = json.loads(stored["data"])
+    company_payload = stored["data"]
     assert company_payload["terminated"] is True
 
 
@@ -201,7 +200,7 @@ def test_load_to_staging_normalizes_country(monkeypatch: pytest.MonkeyPatch) -> 
     staging_loader.load_to_staging(rows, run_id=1)
 
     stored = tables["staging_companies"][0]
-    company_payload = json.loads(stored["data"])
+    company_payload = stored["data"]
     assert company_payload["country"] == "DE"
     assert company_payload["register_country"] == "DE"
 

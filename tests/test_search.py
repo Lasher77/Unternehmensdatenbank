@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from backend.app import search
 from backend.app.deps import get_os_client
 from backend.app.main import app
 
@@ -80,3 +81,35 @@ def test_search_companies_no_internal_server_error() -> None:
     response = client.post("/api/search/companies", json={"query": "foo"})
     assert response.status_code != 500
     app.dependency_overrides.clear()
+
+
+def test_build_query_uses_existing_fields() -> None:
+    params = {
+        "state": "HH",
+        "city": "Hamburg",
+        "postal_code": "20095",
+        "wz": "43.99",
+        "status": "active",
+        "legal_form": "gmbh",
+    }
+
+    body = search._build_query(params)
+
+    assert body["aggs"]["state"]["terms"]["field"] == "state"
+    assert body["aggs"]["city"]["terms"]["field"] == "city.raw"
+    assert body["aggs"]["status"]["terms"]["field"] == "status"
+    assert body["aggs"]["legal_form"]["terms"]["field"] == "legal_form"
+
+    assert body["query"] == {
+        "bool": {
+            "must": {"match_all": {}},
+            "filter": [
+                {"term": {"state": "HH"}},
+                {"term": {"city.raw": "Hamburg"}},
+                {"term": {"postal_code": "20095"}},
+                {"term": {"wz": "43.99"}},
+                {"term": {"status": "active"}},
+                {"term": {"legal_form": "gmbh"}},
+            ],
+        }
+    }

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any, Dict, List
 
 from sqlalchemy import text
@@ -73,7 +72,7 @@ def load_to_staging(rows: List[Dict], run_id: int) -> None:
                 ),
                 {
                     "source_id": company["source_id"],
-                    "data": json.dumps(company),
+                    "data": company,
                     "run_id": run_id,
                 },
             )
@@ -105,7 +104,7 @@ def load_to_staging(rows: List[Dict], run_id: int) -> None:
                     ),
                     {
                         "source_person_id": normalized_person["source_person_id"],
-                        "data": json.dumps(normalized_person["data"]),
+                        "data": normalized_person["data"],
                         "run_id": run_id,
                     },
                 )

@@ -18,10 +18,10 @@ def _build_query(params: Dict[str, Any]) -> Dict[str, Any]:
         "size": per_page,
         "query": {"match_all": {}},
         "aggs": {
-            "state": {"terms": {"field": "state.keyword"}},
-            "city": {"terms": {"field": "city.keyword"}},
-            "status": {"terms": {"field": "status.keyword"}},
-            "legal_form": {"terms": {"field": "legal_form.keyword"}},
+            "state": {"terms": {"field": "state"}},
+            "city": {"terms": {"field": "city.raw"}},
+            "status": {"terms": {"field": "status"}},
+            "legal_form": {"terms": {"field": "legal_form"}},
         },
     }
 
@@ -30,9 +30,18 @@ def _build_query(params: Dict[str, Any]) -> Dict[str, Any]:
     if q := params.get("query"):
         body["query"] = {"simple_query_string": {"query": q}}
 
-    for field in ["state", "city", "postal_code", "wz", "status", "legal_form"]:
+    field_mapping = {
+        "state": "state",
+        "city": "city.raw",
+        "postal_code": "postal_code",
+        "wz": "wz",
+        "status": "status",
+        "legal_form": "legal_form",
+    }
+
+    for field, target in field_mapping.items():
         if value := params.get(field):
-            filters.append({"term": {f"{field}.keyword": value}})
+            filters.append({"term": {target: value}})
 
     if (
         params.get("lat") is not None
