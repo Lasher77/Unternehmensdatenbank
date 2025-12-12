@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 import logging
 
 from fastapi import Depends, FastAPI
@@ -14,7 +15,20 @@ from .routers import companies, exports, imports, salesforce, search, stats, tas
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="BVMW Companies API")
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    client = get_opensearch()
+    try:
+        ensure_companies_index(client)
+    except OpenSearchConnectionError as exc:  # pragma: no cover - log-only path
+        logger.warning(
+            "Skipping OpenSearch index initialization because the cluster is unavailable: %s",
+            exc,
+        )
+    yield
+
+
+app = FastAPI(title="BVMW Companies API", lifespan=lifespan)
 
 settings = get_settings()
 
@@ -33,18 +47,6 @@ app.include_router(exports.router)
 app.include_router(salesforce.router)
 app.include_router(stats.router)
 app.include_router(tasks.router)
-
-
-@app.on_event("startup")
-def startup_event() -> None:
-    client = get_opensearch()
-    try:
-        ensure_companies_index(client)
-    except OpenSearchConnectionError as exc:  # pragma: no cover - log-only path
-        logger.warning(
-            "Skipping OpenSearch index initialization because the cluster is unavailable: %s",
-            exc,
-        )
 
 
 @app.get("/healthz")

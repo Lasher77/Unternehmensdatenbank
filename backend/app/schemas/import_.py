@@ -1,5 +1,6 @@
 from datetime import datetime
-from pydantic import BaseModel, Field
+
+from pydantic import BaseModel, Field, field_serializer
 
 
 class ImportResponse(BaseModel):
@@ -13,6 +14,12 @@ class ImportSummaryResponse(BaseModel):
     summary: dict[str, int] = Field(default_factory=dict)
     finished: bool
     finished_at: datetime | None = None
+
+    @field_serializer("finished_at")
+    def _serialize_finished_at(self, value: datetime | None) -> str | None:
+        if value is None:
+            return None
+        return value.isoformat()
 
 
 class ImportErrorEntry(BaseModel):
