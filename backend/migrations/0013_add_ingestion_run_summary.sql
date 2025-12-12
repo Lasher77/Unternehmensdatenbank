@@ -1,6 +1,6 @@
 BEGIN;
 
 ALTER TABLE ingestion_run
-  ADD COLUMN summary JSONB;
+  ADD COLUMN IF NOT EXISTS summary JSONB;
 
 COMMIT;
