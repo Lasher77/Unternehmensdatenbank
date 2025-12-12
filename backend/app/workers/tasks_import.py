@@ -608,7 +608,8 @@ def finalize_import(result: Union[ImportRunResult, int]) -> Union[ImportRunResul
                     """
                     SELECT
                         source_id,
-                        name_norm AS name,
+                        COALESCE(name_norm, raw_name) AS name,
+                        raw_name,
                         state,
                         city,
                         postal_code,
@@ -632,6 +633,16 @@ def finalize_import(result: Union[ImportRunResult, int]) -> Union[ImportRunResul
             .mappings()
             .all()
         )
+
+        companies = [
+            {
+                **company,
+                "name": company.get("name")
+                or company.get("raw_name")
+                or company.get("name_norm"),
+            }
+            for company in companies
+        ]
 
         conn.execute(
             text(

@@ -199,3 +199,74 @@ def test_finalize_import_promotes_and_indexes(monkeypatch: pytest.MonkeyPatch) -
     assert promoted_runs == [99]
     assert indexed_companies and indexed_companies[0][0]["source_id"] == "company-1"
     assert finished_calls and isinstance(finished_calls[0], datetime)
+
+
+def test_finalize_import_indexes_raw_name_when_normalized_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    indexed_companies: list[list[dict[str, Any]]] = []
+
+    class FakeConnection:
+        def __enter__(self) -> "FakeConnection":
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> bool:  # type: ignore[override]
+            return False
+
+        def execute(self, statement: Any, params: dict[str, Any] | None = None) -> FakeResult:
+            sql = getattr(statement, "text", str(statement))
+            params = params or {}
+
+            if "FROM companies" in sql and "seen_in_run" in sql:
+                return FakeResult(
+                    rows=[
+                        {
+                            "source_id": "company-raw",
+                            "name": None,
+                            "raw_name": "Raw Company GmbH",
+                            "state": None,
+                            "city": None,
+                            "postal_code": None,
+                            "street": None,
+                            "country": None,
+                            "email": None,
+                            "website": None,
+                            "phone": None,
+                            "register_id": None,
+                            "vat_id": None,
+                            "status": None,
+                            "legal_form": None,
+                            "lat": None,
+                            "lng": None,
+                        }
+                    ]
+                )
+
+            if "UPDATE ingestion_run" in sql:
+                return FakeResult()
+
+            raise AssertionError(f"Unexpected SQL: {sql}")
+
+        def begin(self) -> "FakeConnection":
+            return self
+
+    class FakeEngine:
+        def begin(self) -> FakeConnection:
+            return FakeConnection()
+
+    monkeypatch.setattr(tasks_import, "engine", FakeEngine())
+    monkeypatch.setattr(tasks_import.staging_loader, "promote_staging", lambda run_id: None)
+    monkeypatch.setattr(tasks_import, "get_opensearch", lambda: object())
+    monkeypatch.setattr(tasks_import, "ensure_companies_index", lambda client: None)
+    monkeypatch.setattr(
+        tasks_import,
+        "index_companies",
+        lambda client, companies: indexed_companies.append(companies),
+    )
+
+    payload = {"run_id": 5, "file": "example.ndjson"}
+    result = tasks_import.finalize_import.run(payload)
+
+    assert result == payload
+    assert indexed_companies
+    assert indexed_companies[0][0]["name"] == "Raw Company GmbH"
