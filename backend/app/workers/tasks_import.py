@@ -52,6 +52,16 @@ class IngestionError:
     line_number: int | None = None
 
 
+@dataclass
+class MappedRow:
+    """Container for a mapped row and its raw context."""
+
+    payload: dict[str, Any]
+    raw_line: str
+    line_number: int
+    source_id: str | None
+
+
 class ImportRunResult(TypedDict, total=False):
     s3_key: str
     run_id: int
@@ -302,6 +312,47 @@ def _insert_errors(conn, errors: list[IngestionError]) -> None:
     )
 
 
+def _load_rows_with_error_handling(
+    rows_batch: list[MappedRow],
+    run_id: int,
+    file_name: str,
+    errors: list[IngestionError],
+) -> tuple[int, int]:
+    """Load mapped rows and record detailed errors on failure."""
+
+    if not rows_batch:
+        return 0, 0
+
+    try:
+        staging_loader.load_to_staging([row.payload for row in rows_batch], run_id)
+    except SQLAlchemyError:
+        successful = 0
+        error_count = 0
+
+        for row in rows_batch:
+            try:
+                staging_loader.load_to_staging([row.payload], run_id)
+            except SQLAlchemyError as exc:
+                error_count += 1
+                errors.append(
+                    IngestionError(
+                        run_id=run_id,
+                        source_id=row.source_id,
+                        line_number=row.line_number,
+                        file_name=file_name,
+                        error_code="STAGING_ERROR",
+                        error_message=str(exc.orig) if hasattr(exc, "orig") else str(exc),
+                        raw_excerpt=row.raw_line[:500],
+                    )
+                )
+            else:
+                successful += 1
+
+        return successful, error_count
+
+    return len(rows_batch), 0
+
+
 def _upsert_company(conn, company: dict[str, Any], run_id: int) -> None:
     insert_stmt = insert(_get_companies_table()).values(
         source_id=company["source_id"],
@@ -387,7 +438,7 @@ def run_import(self, s3_key: str, label: str | None = None) -> ImportRunResult:
         error_records = 0
 
         with engine.connect() as conn:
-            rows_batch: list[dict[str, Any]] = []
+            rows_batch: list[MappedRow] = []
             for line_number, line in enumerate(fh, start=1):
                 raw_line = line.strip()
                 if not raw_line:
@@ -465,32 +516,26 @@ def run_import(self, s3_key: str, label: str | None = None) -> ImportRunResult:
                             errors = []
                         continue
 
-                    rows_batch.append(row_payload)
+                    rows_batch.append(
+                        MappedRow(
+                            payload=row_payload,
+                            raw_line=raw_line,
+                            line_number=line_number,
+                            source_id=source_id,
+                        )
+                    )
 
                     if len(rows_batch) >= STAGING_BATCH_SIZE:
-                        try:
-                            staging_loader.load_to_staging(rows_batch, run_id)
-                        except SQLAlchemyError as exc:
-                            error_records += len(rows_batch)
-                            errors.append(
-                                IngestionError(
-                                    run_id=run_id,
-                                    source_id=source_id,
-                                    line_number=line_number,
-                                    file_name=file_name,
-                                    error_code="STAGING_ERROR",
-                                    error_message=str(exc.orig) if hasattr(exc, "orig") else str(exc),
-                                    raw_excerpt=raw_line[:500],
-                                )
-                            )
-                            rows_batch = []
-                            if len(errors) >= BATCH_ERROR_SIZE:
-                                with conn.begin():
-                                    _insert_errors(conn, errors)
-                                errors = []
-                        else:
-                            successful_records += len(rows_batch)
-                            rows_batch = []
+                        successful, failed = _load_rows_with_error_handling(
+                            rows_batch, run_id, file_name, errors
+                        )
+                        successful_records += successful
+                        error_records += failed
+                        rows_batch = []
+                        if len(errors) >= BATCH_ERROR_SIZE:
+                            with conn.begin():
+                                _insert_errors(conn, errors)
+                            errors = []
 
                 except Exception as exc:  # noqa: BLE001
                     error_records += 1
@@ -523,23 +568,11 @@ def run_import(self, s3_key: str, label: str | None = None) -> ImportRunResult:
                 )
 
             if rows_batch:
-                try:
-                    staging_loader.load_to_staging(rows_batch, run_id)
-                except SQLAlchemyError as exc:
-                    error_records += len(rows_batch)
-                    errors.append(
-                        IngestionError(
-                            run_id=run_id,
-                            source_id=None,
-                            line_number=None,
-                            file_name=file_name,
-                            error_code="STAGING_ERROR",
-                            error_message=str(exc.orig) if hasattr(exc, "orig") else str(exc),
-                            raw_excerpt=None,
-                        )
-                    )
-                else:
-                    successful_records += len(rows_batch)
+                successful, failed = _load_rows_with_error_handling(
+                    rows_batch, run_id, file_name, errors
+                )
+                successful_records += successful
+                error_records += failed
 
             if errors:
                 with conn.begin():
