@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
+from sqlalchemy.dialects.postgresql import JSONB
 
 from ..schemas.company import _normalize_optional_bool
 from .date_normalization import normalize_birth_date
@@ -62,14 +63,21 @@ def load_to_staging(rows: List[Dict], run_id: int) -> None:
 
     from ..db import engine
 
+    company_stmt = text(
+        "INSERT INTO staging_companies (source_id, data, run_id) "
+        "VALUES (:source_id, :data, :run_id)"
+    ).bindparams(bindparam("data", type_=JSONB))
+
+    person_stmt = text(
+        "INSERT INTO staging_persons (source_person_id, data, run_id) "
+        "VALUES (:source_person_id, :data, :run_id)"
+    ).bindparams(bindparam("data", type_=JSONB))
+
     with engine.begin() as conn:
         for row in rows:
             company = _normalize_company_payload(row["company"])
             conn.execute(
-                text(
-                    "INSERT INTO staging_companies (source_id, data, run_id) "
-                    "VALUES (:source_id, :data, :run_id)"
-                ),
+                company_stmt,
                 {
                     "source_id": company["source_id"],
                     "data": company,
@@ -97,11 +105,7 @@ def load_to_staging(rows: List[Dict], run_id: int) -> None:
             for person in row.get("persons", []):
                 normalized_person = _normalize_person_payload(person)
                 conn.execute(
-                    text(
-                        "INSERT INTO staging_persons "
-                        "(source_person_id, data, run_id) "
-                        "VALUES (:source_person_id, :data, :run_id)"
-                    ),
+                    person_stmt,
                     {
                         "source_person_id": normalized_person["source_person_id"],
                         "data": normalized_person["data"],
