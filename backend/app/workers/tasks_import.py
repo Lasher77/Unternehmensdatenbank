@@ -14,7 +14,7 @@ from sqlalchemy import MetaData, Table, func, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 
-from backend.scripts.run_migrations import apply_migrations
+from scripts.run_migrations import apply_migrations
 
 from .celery_app import celery_app
 from ..db import engine
