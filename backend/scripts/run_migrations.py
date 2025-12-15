@@ -12,8 +12,9 @@ from contextlib import closing
 from pathlib import Path
 
 from psycopg2 import Error
+from sqlalchemy.engine import Engine
 
-from app.db import engine
+from backend.app.db import engine as default_engine
 
 LOGGER = logging.getLogger(__name__)
 
@@ -31,13 +32,19 @@ def _get_migration_paths() -> list[Path]:
     return sorted(migrations_dir.glob("*.sql"))
 
 
-def apply_migrations() -> None:
+def apply_migrations(db_engine: Engine | None = None) -> None:
     paths = _get_migration_paths()
     if not paths:
         LOGGER.info("No migrations found, skipping.")
         return
 
-    raw_conn = engine.raw_connection()
+    engine_to_use = db_engine or default_engine
+    raw_conn_factory = getattr(engine_to_use, "raw_connection", None)
+    if raw_conn_factory is None:
+        LOGGER.info("Skipping migrations: engine does not provide raw_connection().")
+        return
+
+    raw_conn = raw_conn_factory()
     try:
         if hasattr(raw_conn, "autocommit"):
             raw_conn.autocommit = True

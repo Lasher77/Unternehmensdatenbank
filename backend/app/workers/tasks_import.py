@@ -14,7 +14,7 @@ from sqlalchemy import MetaData, Table, func, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 
-from scripts.run_migrations import apply_migrations
+from backend.scripts.run_migrations import apply_migrations
 
 from .celery_app import celery_app
 from ..db import engine
@@ -417,7 +417,7 @@ def _upsert_company(conn, company: dict[str, Any], run_id: int) -> None:
 
 @celery_app.task(bind=True)
 def run_import(self, s3_key: str, label: str | None = None) -> ImportRunResult:
-    apply_migrations()
+    apply_migrations(engine)
 
     file_name = label or Path(s3_key).name
     with open(s3_key, "r", encoding="utf-8") as fh:
