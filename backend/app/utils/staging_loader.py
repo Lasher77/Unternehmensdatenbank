@@ -209,7 +209,7 @@ def promote_staging(run_id: int) -> None:
                     source_id,
                     data->>'raw_name',
                     data->>'legal_form',
-                    data->>'name',
+                    data->>'name_norm',
                     NULLIF(btrim(data->>'email'), ''),
                     NULLIF(btrim(data->>'website'), ''),
                     NULLIF(btrim(data->>'phone'), ''),
