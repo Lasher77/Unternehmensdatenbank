@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Mapping
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -53,6 +53,26 @@ class NormalizedQuery:
     website: str | None = None
     email: str | None = None
     email_domain_normalized: str | None = None
+
+
+@dataclass
+class HitAnalysis:
+    """Lightweight analysis of a hit for confidence and reasoning."""
+
+    strong_address_match: bool = False
+    weak_address_match: bool = False
+    domain_term_match: bool = False
+    domain_wildcard_match: bool = False
+    reasons: list[str] = field(default_factory=list)
+
+    @property
+    def has_address_or_domain(self) -> bool:
+        return (
+            self.strong_address_match
+            or self.weak_address_match
+            or self.domain_term_match
+            or self.domain_wildcard_match
+        )
 
 
 def _clean_str(value: str | None) -> str | None:
@@ -120,36 +140,43 @@ def _address_should(normalized: NormalizedQuery) -> list[dict[str, Any]]:
     return should
 
 
-def _domain_should(normalized: NormalizedQuery) -> list[dict[str, Any]]:
-    should: list[dict[str, Any]] = []
+def _domain_fragments(normalized: NormalizedQuery) -> list[str]:
     fragments: list[str] = []
-
     if normalized.domain_normalized:
         fragments.append(normalized.domain_normalized)
-    if (
-        normalized.email_domain_normalized
-        and normalized.email_domain_normalized not in fragments
-    ):
+    if normalized.email_domain_normalized and normalized.email_domain_normalized not in fragments:
         fragments.append(normalized.email_domain_normalized)
+    if not fragments and normalized.website:
+        fragments.append(normalized.website.lower())
+    if not fragments and normalized.email:
+        fragments.append(normalized.email.lower())
+    return fragments
 
-    website_fragment = normalized.website.lower() if normalized.website else None
-    email_fragment = normalized.email
 
-    for fragment in fragments:
-        should.append({"term": {"domain_normalized": fragment}})
-        should.append(
-            {"wildcard": {"website": {"value": f"*{fragment}*", "boost": 0.8}}}
-        )
-        should.append({"wildcard": {"email": {"value": f"*{fragment}", "boost": 0.6}}})
+def _domain_should(normalized: NormalizedQuery) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    term_should: list[dict[str, Any]] = []
+    wildcard_should: list[dict[str, Any]] = []
+    normalized_fragments: list[str] = []
+    wildcard_fragments: list[str] = []
 
-    if website_fragment and not fragments:
-        should.append(
-            {"wildcard": {"website": {"value": f"*{website_fragment}*", "boost": 1.0}}}
-        )
-    if email_fragment and not fragments:
-        should.append({"wildcard": {"email": {"value": f"*{email_fragment}", "boost": 0.6}}})
+    if normalized.domain_normalized:
+        normalized_fragments.append(normalized.domain_normalized)
+    if normalized.email_domain_normalized and normalized.email_domain_normalized not in normalized_fragments:
+        normalized_fragments.append(normalized.email_domain_normalized)
 
-    return should
+    wildcard_fragments.extend(normalized_fragments)
+    if normalized.website and normalized.website.lower() not in wildcard_fragments:
+        wildcard_fragments.append(normalized.website.lower())
+    if normalized.email and normalized.email.lower() not in wildcard_fragments:
+        wildcard_fragments.append(normalized.email.lower())
+
+    for fragment in normalized_fragments:
+        term_should.append({"term": {"domain_normalized": {"value": fragment, "boost": 2.0}}})
+    for fragment in wildcard_fragments:
+        wildcard_should.append({"wildcard": {"website": {"value": f"*{fragment}*", "boost": 0.8}}})
+        wildcard_should.append({"wildcard": {"email": {"value": f"*{fragment}", "boost": 0.6}}})
+
+    return term_should, wildcard_should
 
 
 def _country_filter(normalized: NormalizedQuery) -> list[dict[str, Any]]:
@@ -186,15 +213,17 @@ def _hits_to_match_items(
     hits: list[Mapping[str, Any]],
     match_level: str,
     min_score: float,
-    address_match_source_id: str | None = None,
+    analyses: list[HitAnalysis],
+    extra_reasons: list[str] | None = None,
 ) -> list[SalesforceMatchItem]:
     items: list[SalesforceMatchItem] = []
-    for hit in hits:
+    extra_reasons = extra_reasons or []
+    for hit, analysis in zip(hits, analyses):
         score = float(hit.get("_score", 0.0) or 0.0)
         if score < min_score:
             continue
         company = _hit_to_company(hit)
-        reasons = [match_level]
+        reasons = [match_level] + extra_reasons.copy() + analysis.reasons
         status = (company.status or "").lower()
         if status == "active":
             score *= 1.05
@@ -202,8 +231,6 @@ def _hits_to_match_items(
         elif status and status != "active":
             score *= 0.85
             reasons.append("status_penalty")
-        if address_match_source_id and str(company.source_id) == str(address_match_source_id):
-            reasons.append("address_match")
         items.append(
             SalesforceMatchItem(
                 source_id=company.source_id,
@@ -227,50 +254,131 @@ def _has_address_match(hit: Mapping[str, Any], normalized: NormalizedQuery) -> b
     return False
 
 
+def _classify_address_match(hit: Mapping[str, Any], normalized: NormalizedQuery) -> HitAnalysis:
+    source = hit.get("_source", {})
+    matches_zip = False
+    matches_city = False
+    matches_street = False
+    if normalized.postal_code:
+        matches_zip = source.get("postal_code_normalized") == normalized.postal_code
+    if normalized.city_normalized:
+        matches_city = source.get("city_normalized") == normalized.city_normalized
+    if normalized.street_normalized:
+        matches_street = source.get("street_normalized") == normalized.street_normalized
+
+    strong_address_match = matches_zip or (matches_city and matches_street)
+    weak_address_match = not strong_address_match and (matches_city or matches_street)
+
+    reasons: list[str] = []
+    if matches_zip:
+        reasons.append("address_match_zip")
+    if matches_city:
+        reasons.append("address_match_city")
+    if matches_street:
+        reasons.append("address_match_street")
+    if strong_address_match:
+        reasons.append("address_match_strong")
+    elif weak_address_match:
+        reasons.append("address_match_weak")
+
+    return HitAnalysis(
+        strong_address_match=strong_address_match,
+        weak_address_match=weak_address_match,
+        reasons=reasons,
+    )
+
+
+def _analyze_hit_domain(hit: Mapping[str, Any], domain_fragments: list[str]) -> tuple[bool, bool]:
+    if not domain_fragments:
+        return False, False
+    source = hit.get("_source", {})
+    domain_normalized = (source.get("domain_normalized") or "").lower()
+    website = (source.get("website") or "").lower()
+    email = (source.get("email") or "").lower()
+
+    term_match = bool(domain_normalized and domain_normalized in domain_fragments)
+    wildcard_match = False
+    for fragment in domain_fragments:
+        if fragment in website or email.endswith(fragment):
+            wildcard_match = True
+            break
+    return term_match, wildcard_match
+
+
+def _analyze_hit(hit: Mapping[str, Any], normalized: NormalizedQuery, domain_fragments: list[str]) -> HitAnalysis:
+    analysis = _classify_address_match(hit, normalized)
+    term_match, wildcard_match = _analyze_hit_domain(hit, domain_fragments)
+    if term_match:
+        analysis.domain_term_match = True
+        analysis.reasons.append("domain_term_match")
+    if wildcard_match:
+        analysis.domain_wildcard_match = True
+        analysis.reasons.append("domain_wildcard_match")
+    return analysis
+
+
+def _rerank_hits_by_address(hits: list[Mapping[str, Any]], normalized: NormalizedQuery) -> list[Mapping[str, Any]]:
+    def _priority(hit: Mapping[str, Any]) -> tuple[int, int, float]:
+        analysis = _classify_address_match(hit, normalized)
+        strong = 1 if analysis.strong_address_match else 0
+        weak = 1 if analysis.weak_address_match else 0
+        score = float(hit.get("_score", 0.0) or 0.0)
+        return (strong, weak, score)
+
+    return sorted(hits, key=_priority, reverse=True)
+
+
 def _stage_domain_match(
     client: OpenSearch, normalized: NormalizedQuery, size: int
 ) -> tuple[list[Mapping[str, Any]], str | None]:
-    domain_should = _domain_should(normalized)
-    if not domain_should:
+    term_should, wildcard_should = _domain_should(normalized)
+    if not term_should and not wildcard_should:
         return [], None
     filters = _country_filter(normalized)
 
-    base_query = {
-        "size": size,
-        "query": {
-            "bool": {
-                "should": domain_should,
-                "filter": filters,
-                "minimum_should_match": 1,
-            }
-        },
-    }
-    hits = _run_search(client, base_query)
-    if len(hits) <= 1:
-        return hits, "DOMAIN_EXACT" if hits else None
+    if term_should:
+        base_query = {
+            "size": size,
+            "query": {
+                "bool": {
+                    "should": term_should,
+                    "filter": filters,
+                    "minimum_should_match": 1,
+                }
+            },
+        }
+        hits = _run_search(client, base_query)
+        hits_with_domain = [
+            hit for hit in hits if hit.get("_source", {}).get("domain_normalized")
+        ]
+        if hits_with_domain:
+            return hits_with_domain, "DOMAIN_EXACT"
 
-    must: list[dict[str, Any]] = [
-        {"bool": {"should": domain_should, "minimum_should_match": 1}},
-    ]
-    if normalized.name_normalized:
-        must.append(_name_query(normalized, fuzziness=None))
-    should = domain_should + _address_should(normalized)
-    refined_query = {
-        "size": size,
-        "query": {
-            "bool": {
-                "must": must,
-                "should": should,
-                "filter": filters,
-                "minimum_should_match": 1 if should else 0,
-            }
-        },
-    }
-    refined_hits = _run_search(client, refined_query)
-    if not refined_hits and should:
-        refined_query["query"]["bool"]["minimum_should_match"] = 0
-        refined_hits = _run_search(client, refined_query)
-    return refined_hits, "DOMAIN_EXACT" if refined_hits else None
+    if wildcard_should:
+        must = [{"bool": {"should": wildcard_should, "minimum_should_match": 1}}]
+        should = wildcard_should + _address_should(normalized)
+        if normalized.name_normalized:
+            should.append(_name_query(normalized, fuzziness=None))
+
+        refined_query = {
+            "size": size,
+            "query": {
+                "bool": {
+                    "must": must,
+                    "should": should,
+                    "filter": filters,
+                    "minimum_should_match": 1,
+                }
+            },
+        }
+        hits = _run_search(client, refined_query)
+        if not hits and should:
+            refined_query["query"]["bool"]["minimum_should_match"] = 0
+            hits = _run_search(client, refined_query)
+        if hits:
+            return hits, "DOMAIN_FUZZY"
+
+    return [], None
 
 
 def _name_query(
@@ -286,6 +394,56 @@ def _name_query(
     if prefix_length is not None:
         match["prefix_length"] = prefix_length
     return {"multi_match": match}
+
+
+_GENERIC_NAME_TOKENS = {
+    "agentur",
+    "marketing",
+    "service",
+    "services",
+    "consulting",
+    "solutions",
+    "media",
+    "management",
+    "handel",
+    "vertrieb",
+    "logistik",
+    "systems",
+    "systeme",
+    "digital",
+    "it",
+    "group",
+    "holding",
+    "holdinggesellschaft",
+    "firma",
+    "company",
+    "consult",
+    "design",
+    "agentur",
+    "creative",
+    "produktion",
+    "production",
+    "gmbh",
+    "ag",
+    "ug",
+    "kg",
+    "mbh",
+}
+
+
+def _generic_name_penalty(normalized_name: str | None) -> float:
+    if not normalized_name:
+        return 0.0
+    tokens = [token for token in normalized_name.split() if token]
+    if not tokens:
+        return 0.0
+    generic_count = sum(1 for token in tokens if token in _GENERIC_NAME_TOKENS)
+    ratio = generic_count / len(tokens)
+    if ratio >= 0.6 or (len(tokens) <= 3 and generic_count >= len(tokens) - 1):
+        return -0.12
+    if ratio >= 0.4:
+        return -0.07
+    return 0.0
 
 
 def _stage_name_address(
@@ -311,16 +469,31 @@ def _stage_name_address(
     return _run_search(client, query)
 
 
-def _stage_name_strict(client: OpenSearch, normalized: NormalizedQuery, size: int) -> list[Mapping[str, Any]]:
+def _has_address_or_domain_signals(normalized: NormalizedQuery) -> bool:
+    return any(
+        [
+            normalized.postal_code,
+            normalized.city_normalized,
+            normalized.street_normalized,
+            normalized.domain_normalized,
+            normalized.email_domain_normalized,
+            normalized.website,
+            normalized.email,
+        ]
+    )
+
+
+def _stage_name_strict(
+    client: OpenSearch, normalized: NormalizedQuery, size: int
+) -> tuple[list[Mapping[str, Any]], bool]:
     if not normalized.name_normalized:
-        return []
+        return [], False
     filters = _country_filter(normalized)
     address_should = _address_should(normalized)
-    should = address_should + _domain_should(normalized)
-    # Address/domain matches should improve the score but must not block name-only
-    # matches when the address information is incomplete or differs slightly from
-    # the indexed data. Therefore we keep them as optional ``should`` clauses.
-    minimum_should = 0
+    domain_term_should, domain_wildcard_should = _domain_should(normalized)
+    should = address_should + domain_term_should + domain_wildcard_should
+    enforce_signals = _has_address_or_domain_signals(normalized) and bool(should)
+    minimum_should = 1 if enforce_signals else 0
     query = {
         "size": size,
         "query": {
@@ -332,20 +505,25 @@ def _stage_name_strict(client: OpenSearch, normalized: NormalizedQuery, size: in
             }
         },
     }
-    return _run_search(client, query)
+    hits = _run_search(client, query)
+    if not hits and enforce_signals:
+        query["query"]["bool"]["minimum_should_match"] = 0
+        hits = _run_search(client, query)
+        return hits, True
+    return hits, False
 
 
 def _stage_name_fuzzy(
     client: OpenSearch, normalized: NormalizedQuery, size: int
-) -> list[Mapping[str, Any]]:
+) -> tuple[list[Mapping[str, Any]], bool]:
     if not normalized.name_normalized:
-        return []
+        return [], False
     filters = _country_filter(normalized)
     address_should = _address_should(normalized)
-    should = address_should + _domain_should(normalized)
-    # Keep address/domain signals optional to avoid suppressing good name matches
-    # when the address does not align perfectly with indexed data.
-    minimum_should = 0
+    domain_term_should, domain_wildcard_should = _domain_should(normalized)
+    should = address_should + domain_term_should + domain_wildcard_should
+    enforce_signals = _has_address_or_domain_signals(normalized) and bool(should)
+    minimum_should = 1 if enforce_signals else 0
     query = {
         "size": size,
         "query": {
@@ -357,14 +535,23 @@ def _stage_name_fuzzy(
             }
         },
     }
-    return _run_search(client, query)
+    hits = _run_search(client, query)
+    if not hits and enforce_signals:
+        query["query"]["bool"]["minimum_should_match"] = 0
+        hits = _run_search(client, query)
+        return hits, True
+    return hits, False
 
 
 def _compute_confidence(
-    level: str, hits: list[Mapping[str, Any]], address_match: bool
-) -> float:
+    level: str,
+    hits: list[Mapping[str, Any]],
+    analyses: list[HitAnalysis],
+    generic_penalty: float,
+) -> tuple[float, list[str]]:
     base = {
         "DOMAIN_EXACT": 0.95,
+        "DOMAIN_FUZZY": 0.85,
         "NAME_ADDRESS_STRICT": 0.9,
         "NAME_STRICT": 0.8,
         "NAME_FUZZY_WITH_ADDRESS": 0.7,
@@ -373,15 +560,42 @@ def _compute_confidence(
     }.get(level, 0.5)
 
     confidence = base
+    reasons: list[str] = []
+
     if len(hits) > 1:
         top = float(hits[0].get("_score", 0.0) or 0.0)
         second = float(hits[1].get("_score", 0.0) or 0.0)
         if top > 0:
             delta = max(0.0, top - second) / top
             confidence += min(0.1, delta * 0.1)
-    if address_match:
-        confidence += 0.05
-    return max(0.0, min(1.0, confidence))
+
+    if analyses:
+        top_analysis = analyses[0]
+        if top_analysis.strong_address_match:
+            confidence += 0.05
+            if level in ("NAME_STRICT", "NAME_ADDRESS_STRICT"):
+                confidence = min(confidence, 0.85)
+            elif level.startswith("NAME_FUZZY"):
+                confidence = min(confidence, 0.75)
+        elif top_analysis.weak_address_match:
+            confidence += 0.02
+            if level.startswith("NAME"):
+                confidence = min(confidence, 0.8)
+
+        if level in ("NAME_STRICT", "NAME_FUZZY_WITH_ADDRESS", "NAME_FUZZY_ONLY", "NAME_ADDRESS_STRICT"):
+            if not top_analysis.has_address_or_domain:
+                cap = 0.75 if level == "NAME_STRICT" else 0.65
+                confidence = min(confidence, cap)
+                reasons.append("name_only_confidence_cap")
+
+        if level == "NAME_FUZZY_ONLY":
+            confidence = min(confidence, 0.65)
+
+    if generic_penalty < 0:
+        confidence = max(0.0, confidence + generic_penalty)
+        reasons.append("generic_name_penalty")
+
+    return max(0.0, min(1.0, confidence)), reasons
 
 
 @router.get("/ping")
@@ -416,7 +630,9 @@ def match_company(
     min_score = options.min_score
 
     match_level = "NO_MATCH"
-    address_match = False
+    generic_penalty = _generic_name_penalty(normalized.name_normalized)
+    domain_fragments = _domain_fragments(normalized)
+    confidence_reasons: list[str] = []
     hits: list[Mapping[str, Any]] = []
 
     domain_hits, domain_level = _stage_domain_match(client, normalized, max_results)
@@ -429,33 +645,29 @@ def match_company(
             hits = name_address_hits
             match_level = "NAME_ADDRESS_STRICT"
         else:
-            name_hits = _stage_name_strict(client, normalized, max_results)
+            name_hits, _ = _stage_name_strict(client, normalized, max_results)
             if name_hits:
                 hits = name_hits
                 match_level = "NAME_STRICT"
             else:
-                fuzzy_hits = _stage_name_fuzzy(client, normalized, max_results)
+                fuzzy_hits, _ = _stage_name_fuzzy(client, normalized, max_results)
                 if fuzzy_hits:
-                    hits = fuzzy_hits
-                    for hit in hits:
-                        if _has_address_match(hit, normalized):
-                            address_match = True
-                            # move address matched hit to front
-                            hits = [hit] + [h for h in hits if h is not hit]
-                            break
+                    hits = _rerank_hits_by_address(fuzzy_hits, normalized)
+                    address_match = any(_has_address_match(hit, normalized) for hit in hits)
                     match_level = "NAME_FUZZY_WITH_ADDRESS" if address_match else "NAME_FUZZY_ONLY"
 
-    matches = _hits_to_match_items(
-        hits,
-        match_level,
-        min_score,
-        address_match_source_id=hits[0].get("_source", {}).get("source_id") if address_match and hits else None,
+    analyses = [_analyze_hit(hit, normalized, domain_fragments) for hit in hits]
+
+    confidence, confidence_reason_flags = _compute_confidence(
+        match_level if hits else "NO_MATCH", hits, analyses, generic_penalty
     )
+    confidence_reasons.extend(confidence_reason_flags)
+
+    matches = _hits_to_match_items(hits, match_level, min_score, analyses, extra_reasons=confidence_reasons)
     matches.sort(key=lambda m: m.score, reverse=True)
     matches = matches[:max_results]
     best_match = matches[0] if matches else None
 
-    confidence = _compute_confidence(match_level if matches else "NO_MATCH", hits, address_match)
     result = SalesforceMatchResult(
         company=best_match.company if best_match else None,
         match_level=match_level if matches else "NO_MATCH",
